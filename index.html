@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Empréstimo Elias</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --border: #e3e6eb;
+      --text: #1a1f2b;
+      --muted: #5b6472;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --danger: #dc2626;
+      --success: #059669;
+      --warning: #d97706;
+      --radius: 10px;
+      --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 1px 3px rgba(16, 24, 40, .06);
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+    header h1 small { font-weight: 400; color: var(--muted); margin-left: 8px; }
+
+    .rate-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #eef2ff;
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      border: 1px solid #c7d2fe;
+    }
+    .rate-bar label { font-size: 13px; color: var(--muted); }
+    .rate-bar input {
+      width: 90px; font-weight: 600; text-align: right;
+      border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px;
+    }
+    .rate-bar button {
+      background: transparent; border: 1px solid var(--border);
+      width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .rate-bar button:hover { background: #fff; }
+    .rate-status { font-size: 12px; color: var(--muted); min-width: 100px; }
+    .rate-status.error { color: var(--danger); }
+    .rate-status.success { color: var(--success); }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 20px;
+    }
+
+    section.card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+    }
+    section.card h2 {
+      margin: 0 0 14px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    form#add-form {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr) auto;
+      gap: 12px;
+      align-items: end;
+    }
+    form#add-form .field { display: flex; flex-direction: column; gap: 4px; }
+    form#add-form label { font-size: 12px; color: var(--muted); font-weight: 500; }
+    form#add-form input, form#add-form select {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font: inherit;
+      background: #fff;
+    }
+    form#add-form input:focus, form#add-form select:focus {
+      outline: 2px solid var(--primary);
+      outline-offset: -1px; border-color: var(--primary);
+    }
+
+    button.primary {
+      background: var(--primary); color: white; border: none;
+      padding: 9px 16px; border-radius: 6px; cursor: pointer;
+      font: inherit; font-weight: 500;
+    }
+    button.primary:hover { background: var(--primary-hover); }
+    button.ghost {
+      background: transparent; border: 1px solid var(--border);
+      padding: 7px 12px; border-radius: 6px; cursor: pointer; font: inherit;
+    }
+    button.ghost:hover { background: #f3f4f6; }
+    button.danger {
+      background: transparent; border: 1px solid #fecaca; color: var(--danger);
+      padding: 7px 12px; border-radius: 6px; cursor: pointer; font: inherit;
+    }
+    button.danger:hover { background: #fef2f2; }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .summary .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+    }
+    .summary .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+    .summary .stat .primary-value { font-size: 22px; font-weight: 700; margin-top: 6px; }
+    .summary .stat .secondary-value { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .summary .stat.grand { background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%); color: white; border: none; }
+    .summary .stat.grand .label, .summary .stat.grand .secondary-value { color: rgba(255,255,255,.85); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    thead th {
+      text-align: left;
+      padding: 10px 12px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+    }
+    tbody td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f3f5;
+      vertical-align: middle;
+    }
+    tbody tr:hover { background: #f9fafb; }
+    tbody tr.editing { background: #fffbeb; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .badge.brl { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }
+    .badge.eur { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+
+    .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+    .icon-btn {
+      background: transparent; border: 1px solid var(--border);
+      width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--muted);
+    }
+    .icon-btn:hover { background: #f3f4f6; color: var(--text); }
+    .icon-btn.danger:hover { background: #fef2f2; color: var(--danger); border-color: #fecaca; }
+
+    tbody td input, tbody td select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font: inherit;
+      background: #fff;
+    }
+    tbody td.num input { text-align: right; }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .toolbar .spacer { flex: 1; }
+
+    .empty {
+      text-align: center;
+      padding: 48px 16px;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #111827;
+      color: white;
+      padding: 12px 18px;
+      border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0,0,0,.15);
+      font-size: 14px;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity .2s, transform .2s;
+      pointer-events: none;
+      z-index: 100;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { background: var(--danger); }
+    .toast.success { background: var(--success); }
+
+    @media (max-width: 800px) {
+      header { padding: 14px 16px; }
+      main { padding: 16px; }
+      form#add-form { grid-template-columns: 1fr 1fr; }
+      form#add-form button.primary { grid-column: 1 / -1; }
+      .summary { grid-template-columns: 1fr; }
+      table { font-size: 13px; }
+      thead th, tbody td { padding: 8px 6px; }
+      .hide-mobile { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Empréstimo Elias <small>controle de gastos</small></h1>
+    <div class="rate-bar" role="group" aria-label="Cotação do euro">
+      <label for="rate-input">Cotação EUR → BRL</label>
+      <input id="rate-input" type="number" step="0.0001" min="0" inputmode="decimal" />
+      <button id="rate-refresh" type="button" title="Atualizar cotação automaticamente" aria-label="Atualizar cotação">↻</button>
+      <span id="rate-status" class="rate-status"></span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card" aria-labelledby="add-title">
+      <h2 id="add-title">Adicionar gasto</h2>
+      <form id="add-form" autocomplete="off">
+        <div class="field">
+          <label for="f-date">Data</label>
+          <input id="f-date" name="date" type="date" required />
+        </div>
+        <div class="field">
+          <label for="f-value">Valor original</label>
+          <input id="f-value" name="value" type="number" step="0.01" min="0" inputmode="decimal" required placeholder="0,00" />
+        </div>
+        <div class="field">
+          <label for="f-currency">Moeda</label>
+          <select id="f-currency" name="currency">
+            <option value="BRL">BRL (R$)</option>
+            <option value="EUR">EUR (€)</option>
+          </select>
+        </div>
+        <div class="field" style="grid-column: span 2;">
+          <label for="f-note">Observação</label>
+          <input id="f-note" name="note" type="text" placeholder="Ex: Cartão" />
+        </div>
+        <button type="submit" class="primary">Adicionar</button>
+      </form>
+    </section>
+
+    <section aria-labelledby="summary-title">
+      <h2 id="summary-title" style="position:absolute;left:-9999px">Resumo</h2>
+      <div class="summary">
+        <div class="stat">
+          <div class="label">Total Cartão (BRL)</div>
+          <div class="primary-value" id="sum-brl-original">R$ 0,00</div>
+          <div class="secondary-value" id="sum-brl-eur">€ 0,00 convertidos</div>
+        </div>
+        <div class="stat">
+          <div class="label">Total Outros (EUR)</div>
+          <div class="primary-value" id="sum-eur-original">€ 0,00</div>
+          <div class="secondary-value">moedas em euro direto</div>
+        </div>
+        <div class="stat grand">
+          <div class="label">Total Geral (€)</div>
+          <div class="primary-value" id="sum-grand">€ 0,00</div>
+          <div class="secondary-value" id="sum-count">0 transações</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="tx-title">
+      <h2 id="tx-title">Transações</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Valor original</th>
+            <th>Moeda</th>
+            <th>Valor em €</th>
+            <th class="hide-mobile">Observação</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tx-body"></tbody>
+      </table>
+      <div id="tx-empty" class="empty" hidden>Nenhuma transação ainda. Adicione a primeira acima.</div>
+    </section>
+
+    <section class="card">
+      <div class="toolbar">
+        <button class="ghost" id="btn-export-csv" type="button">Exportar CSV</button>
+        <button class="ghost" id="btn-export-json" type="button">Exportar JSON (backup)</button>
+        <button class="ghost" id="btn-import-json" type="button">Importar JSON</button>
+        <input type="file" id="file-import" accept="application/json" hidden />
+        <div class="spacer"></div>
+        <button class="danger" id="btn-reset" type="button">Limpar tudo</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Os dados ficam salvos no seu navegador (localStorage). Faça backup com "Exportar JSON" se quiser garantir.
+  </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    'use strict';
+
+    // ---------- types (JSDoc) ----------
+    /**
+     * @typedef {Object} Transaction
+     * @property {string} id
+     * @property {string} date  ISO date YYYY-MM-DD
+     * @property {number} value Original value in the chosen currency
+     * @property {'BRL'|'EUR'} currency
+     * @property {string} note
+     */
+
+    // ---------- storage layer ----------
+    const STORAGE_KEY = 'emprestimo-elias.v1';
+    const RATE_KEY = 'emprestimo-elias.rate.v1';
+
+    /** @returns {{transactions: Transaction[]}} */
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { transactions: seedTransactions() };
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.transactions)) {
+          return { transactions: seedTransactions() };
+        }
+        return parsed;
+      } catch (err) {
+        console.warn('Falha ao ler localStorage, usando dados iniciais.', err);
+        return { transactions: seedTransactions() };
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ transactions: state.transactions }));
+    }
+
+    /** @returns {{value: number, source: 'auto'|'manual', updatedAt: string} | null} */
+    function loadRate() {
+      try {
+        const raw = localStorage.getItem(RATE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch { return null; }
+    }
+    function saveRate(rate) { localStorage.setItem(RATE_KEY, JSON.stringify(rate)); }
+
+    // ---------- seed (pre-populated from the original .xlsx) ----------
+    /** @returns {Transaction[]} */
+    function seedTransactions() {
+      // Imported from "Empréstimo Elias.xlsx"
+      // Excel serial dates converted to ISO. Currency and notes preserved verbatim.
+      return [
+        { id: 't1',  date: '2025-04-09', value: 2151.57, currency: 'BRL', note: 'Cartão' },
+        { id: 't2',  date: '2025-04-15', value: 908.32,  currency: 'BRL', note: 'Cartão' },
+        { id: 't3',  date: '2025-04-15', value: 50,      currency: 'EUR', note: 'Outros' },
+        { id: 't4',  date: '2025-04-16', value: 50,      currency: 'EUR', note: 'Outros' },
+        { id: 't5',  date: '2025-04-17', value: 541.31,  currency: 'BRL', note: 'Cartão (R$ 840.67 - R$ 299.36)' },
+        { id: 't6',  date: '2025-04-19', value: 60,      currency: 'EUR', note: 'Outros' },
+        { id: 't7',  date: '2025-04-20', value: 25,      currency: 'EUR', note: 'Outros' },
+        { id: 't8',  date: '2025-04-21', value: 913.12,  currency: 'BRL', note: 'Cartão' },
+        { id: 't9',  date: '2025-04-25', value: 93.11,   currency: 'BRL', note: 'Cartão (R$ 129.19 / 2)' },
+        { id: 't10', date: '2025-04-26', value: 450.45,  currency: 'BRL', note: 'Cartão (R$ 538.20 - R$ 87.75)' },
+        { id: 't11', date: '2025-04-27', value: 376.26,  currency: 'BRL', note: 'Cartão (Falta IOF)' },
+      ];
+    }
+
+    // ---------- formatting helpers ----------
+    const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+    const fmtEUR = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'EUR' });
+    const fmtDate = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+    function formatMoney(v, currency) { return currency === 'BRL' ? fmtBRL.format(v) : fmtEUR.format(v); }
+    function formatDate(iso) {
+      if (!iso) return '';
+      const [y, m, d] = iso.split('-').map(Number);
+      return fmtDate.format(new Date(y, m - 1, d));
+    }
+
+    function uid() { return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+    // ---------- domain logic ----------
+    /**
+     * @param {Transaction} t
+     * @param {number} rate EUR→BRL rate (BRL per EUR)
+     * @returns {number} value converted to EUR
+     */
+    function valueInEUR(t, rate) {
+      if (t.currency === 'EUR') return t.value;
+      if (!rate || rate <= 0) return 0;
+      return t.value / rate;
+    }
+
+    /**
+     * @param {Transaction[]} txs
+     * @param {number} rate
+     */
+    function computeTotals(txs, rate) {
+      let brlOriginal = 0, brlEur = 0, eurOriginal = 0;
+      for (const t of txs) {
+        if (t.currency === 'BRL') {
+          brlOriginal += t.value;
+          brlEur += valueInEUR(t, rate);
+        } else {
+          eurOriginal += t.value;
+        }
+      }
+      return {
+        brlOriginal,
+        brlEur,
+        eurOriginal,
+        grand: brlEur + eurOriginal,
+        count: txs.length,
+      };
+    }
+
+    // ---------- exchange rate ----------
+    async function fetchRate() {
+      // AwesomeAPI — public, no key required, CORS-enabled
+      const res = await fetch('https://economia.awesomeapi.com.br/last/EUR-BRL', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      const bid = parseFloat(json.EURBRL && json.EURBRL.bid);
+      if (!isFinite(bid) || bid <= 0) throw new Error('Resposta inválida');
+      return bid;
+    }
+
+    async function refreshRate() {
+      setRateStatus('Buscando…', '');
+      try {
+        const value = await fetchRate();
+        state.rate = { value, source: 'auto', updatedAt: new Date().toISOString() };
+        saveRate(state.rate);
+        rateInput.value = value.toFixed(4);
+        setRateStatus('Atualizado agora', 'success');
+        render();
+      } catch (err) {
+        console.warn(err);
+        setRateStatus('Falha ao buscar', 'error');
+        toast('Não consegui buscar a cotação. Você pode digitar manualmente.', 'error');
+      }
+    }
+
+    function setRateStatus(text, kind) {
+      rateStatus.textContent = text;
+      rateStatus.className = 'rate-status' + (kind ? ' ' + kind : '');
+    }
+
+    // ---------- rendering ----------
+    function render() {
+      renderTable();
+      renderTotals();
+    }
+
+    function renderTotals() {
+      const totals = computeTotals(state.transactions, state.rate.value);
+      document.getElementById('sum-brl-original').textContent = fmtBRL.format(totals.brlOriginal);
+      document.getElementById('sum-brl-eur').textContent = fmtEUR.format(totals.brlEur) + ' convertidos';
+      document.getElementById('sum-eur-original').textContent = fmtEUR.format(totals.eurOriginal);
+      document.getElementById('sum-grand').textContent = fmtEUR.format(totals.grand);
+      document.getElementById('sum-count').textContent =
+        totals.count + (totals.count === 1 ? ' transação' : ' transações');
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('tx-body');
+      const empty = document.getElementById('tx-empty');
+      tbody.innerHTML = '';
+      const sorted = [...state.transactions].sort((a, b) => a.date.localeCompare(b.date));
+      if (sorted.length === 0) { empty.hidden = false; return; }
+      empty.hidden = true;
+      for (const t of sorted) {
+        const tr = document.createElement('tr');
+        tr.dataset.id = t.id;
+        const inEur = valueInEUR(t, state.rate.value);
+        tr.innerHTML = `
+          <td>${formatDate(t.date)}</td>
+          <td class="num">${formatMoney(t.value, t.currency)}</td>
+          <td><span class="badge ${t.currency.toLowerCase()}">${t.currency}</span></td>
+          <td class="num">${fmtEUR.format(inEur)}</td>
+          <td class="hide-mobile">${escapeHtml(t.note || '')}</td>
+          <td>
+            <div class="row-actions">
+              <button class="icon-btn" data-action="edit" title="Editar" aria-label="Editar">✎</button>
+              <button class="icon-btn danger" data-action="delete" title="Excluir" aria-label="Excluir">🗑</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    function renderRowAsEditing(id) {
+      const t = state.transactions.find(x => x.id === id);
+      if (!t) return;
+      const tr = document.querySelector(`tr[data-id="${id}"]`);
+      if (!tr) return;
+      tr.classList.add('editing');
+      tr.innerHTML = `
+        <td><input type="date" value="${t.date}" data-field="date" /></td>
+        <td class="num"><input type="number" step="0.01" min="0" value="${t.value}" data-field="value" /></td>
+        <td>
+          <select data-field="currency">
+            <option value="BRL"${t.currency === 'BRL' ? ' selected' : ''}>BRL</option>
+            <option value="EUR"${t.currency === 'EUR' ? ' selected' : ''}>EUR</option>
+          </select>
+        </td>
+        <td class="num">—</td>
+        <td class="hide-mobile"><input type="text" value="${escapeAttr(t.note || '')}" data-field="note" /></td>
+        <td>
+          <div class="row-actions">
+            <button class="icon-btn" data-action="save" title="Salvar" aria-label="Salvar">✓</button>
+            <button class="icon-btn" data-action="cancel" title="Cancelar" aria-label="Cancelar">✕</button>
+          </div>
+        </td>
+      `;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+    function escapeAttr(s) { return escapeHtml(s); }
+
+    // ---------- mutations ----------
+    function addTransaction(t) {
+      state.transactions.push({ ...t, id: uid() });
+      saveState();
+      render();
+    }
+
+    function updateTransaction(id, patch) {
+      const idx = state.transactions.findIndex(x => x.id === id);
+      if (idx === -1) return;
+      state.transactions[idx] = { ...state.transactions[idx], ...patch };
+      saveState();
+      render();
+    }
+
+    function deleteTransaction(id) {
+      state.transactions = state.transactions.filter(x => x.id !== id);
+      saveState();
+      render();
+    }
+
+    // ---------- import / export ----------
+    function downloadFile(filename, content, mime) {
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportCSV() {
+      const rows = [['Data', 'Valor Original', 'Moeda', 'Valor em € (Hoje)', 'Observação']];
+      const sorted = [...state.transactions].sort((a, b) => a.date.localeCompare(b.date));
+      for (const t of sorted) {
+        rows.push([
+          t.date,
+          t.value.toFixed(2).replace('.', ','),
+          t.currency,
+          valueInEUR(t, state.rate.value).toFixed(2).replace('.', ','),
+          (t.note || '').replace(/"/g, '""'),
+        ]);
+      }
+      const csv = rows.map(r => r.map(c => `"${c}"`).join(';')).join('\r\n');
+      // BOM so Excel detects UTF-8 properly
+      downloadFile('emprestimo-elias.csv', '﻿' + csv, 'text/csv;charset=utf-8');
+      toast('CSV exportado', 'success');
+    }
+
+    function exportJSON() {
+      const payload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        rate: state.rate,
+        transactions: state.transactions,
+      };
+      downloadFile('emprestimo-elias-backup.json', JSON.stringify(payload, null, 2), 'application/json');
+      toast('Backup JSON salvo', 'success');
+    }
+
+    function importJSON(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result));
+          if (!parsed || !Array.isArray(parsed.transactions)) throw new Error('Formato inválido');
+          // basic validation
+          for (const t of parsed.transactions) {
+            if (typeof t.date !== 'string' || typeof t.value !== 'number'
+                || (t.currency !== 'BRL' && t.currency !== 'EUR')) {
+              throw new Error('Transação inválida no arquivo');
+            }
+          }
+          if (!confirm(`Importar ${parsed.transactions.length} transações? Isso substitui as atuais.`)) return;
+          state.transactions = parsed.transactions.map(t => ({
+            id: t.id || uid(),
+            date: t.date,
+            value: Number(t.value),
+            currency: t.currency,
+            note: String(t.note || ''),
+          }));
+          saveState();
+          render();
+          toast('Importação concluída', 'success');
+        } catch (err) {
+          console.error(err);
+          toast('Arquivo inválido: ' + err.message, 'error');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // ---------- toast ----------
+    let toastTimer;
+    function toast(message, kind = '') {
+      const el = document.getElementById('toast');
+      el.textContent = message;
+      el.className = 'toast show' + (kind ? ' ' + kind : '');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { el.className = 'toast'; }, 2600);
+    }
+
+    // ---------- event wiring ----------
+    const state = {
+      transactions: loadState().transactions,
+      rate: loadRate() || { value: 5.85, source: 'manual', updatedAt: null },
+    };
+
+    const rateInput = document.getElementById('rate-input');
+    const rateStatus = document.getElementById('rate-status');
+
+    rateInput.value = state.rate.value.toFixed(4);
+    if (state.rate.source === 'auto' && state.rate.updatedAt) {
+      const when = new Date(state.rate.updatedAt);
+      setRateStatus('auto · ' + when.toLocaleString('pt-BR'), '');
+    } else {
+      setRateStatus('manual', '');
+    }
+
+    rateInput.addEventListener('change', () => {
+      const v = parseFloat(rateInput.value);
+      if (!isFinite(v) || v <= 0) {
+        toast('Cotação inválida', 'error');
+        rateInput.value = state.rate.value.toFixed(4);
+        return;
+      }
+      state.rate = { value: v, source: 'manual', updatedAt: new Date().toISOString() };
+      saveRate(state.rate);
+      setRateStatus('manual', '');
+      render();
+    });
+
+    document.getElementById('rate-refresh').addEventListener('click', refreshRate);
+
+    document.getElementById('add-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const form = ev.currentTarget;
+      const data = new FormData(form);
+      const date = String(data.get('date'));
+      const value = parseFloat(String(data.get('value')));
+      const currency = String(data.get('currency'));
+      const note = String(data.get('note') || '').trim();
+      if (!date || !isFinite(value) || value <= 0 || (currency !== 'BRL' && currency !== 'EUR')) {
+        toast('Preencha data, valor e moeda corretamente', 'error');
+        return;
+      }
+      addTransaction({ date, value, currency, note });
+      form.reset();
+      document.getElementById('f-date').focus();
+      toast('Adicionado', 'success');
+    });
+
+    // default date = today
+    (function setDefaultDate() {
+      const today = new Date();
+      const iso = today.getFullYear() + '-'
+        + String(today.getMonth() + 1).padStart(2, '0') + '-'
+        + String(today.getDate()).padStart(2, '0');
+      document.getElementById('f-date').value = iso;
+    })();
+
+    document.getElementById('tx-body').addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button[data-action]');
+      if (!btn) return;
+      const tr = btn.closest('tr');
+      const id = tr && tr.dataset.id;
+      if (!id) return;
+
+      const action = btn.dataset.action;
+      if (action === 'edit') {
+        renderRowAsEditing(id);
+      } else if (action === 'delete') {
+        const t = state.transactions.find(x => x.id === id);
+        if (!t) return;
+        if (confirm(`Excluir ${formatMoney(t.value, t.currency)} de ${formatDate(t.date)}?`)) {
+          deleteTransaction(id);
+          toast('Removido', 'success');
+        }
+      } else if (action === 'cancel') {
+        render();
+      } else if (action === 'save') {
+        const fields = tr.querySelectorAll('[data-field]');
+        const patch = {};
+        for (const el of fields) {
+          const f = el.dataset.field;
+          patch[f] = f === 'value' ? parseFloat(el.value) : el.value;
+        }
+        if (!patch.date || !isFinite(patch.value) || patch.value <= 0
+            || (patch.currency !== 'BRL' && patch.currency !== 'EUR')) {
+          toast('Dados inválidos', 'error');
+          return;
+        }
+        updateTransaction(id, patch);
+        toast('Salvo', 'success');
+      }
+    });
+
+    document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+    document.getElementById('btn-export-json').addEventListener('click', exportJSON);
+    document.getElementById('btn-import-json').addEventListener('click', () => {
+      document.getElementById('file-import').click();
+    });
+    document.getElementById('file-import').addEventListener('change', (ev) => {
+      const file = ev.target.files && ev.target.files[0];
+      if (file) importJSON(file);
+      ev.target.value = '';
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      if (!confirm('Apagar todas as transações? Esta ação não pode ser desfeita.')) return;
+      state.transactions = [];
+      saveState();
+      render();
+      toast('Lista zerada', 'success');
+    });
+
+    // Try to refresh rate on load if it's missing or older than 12 hours
+    (function autoRefreshOnLoad() {
+      const stale = !state.rate.updatedAt
+        || (Date.now() - new Date(state.rate.updatedAt).getTime()) > 12 * 60 * 60 * 1000;
+      if (stale && navigator.onLine !== false) refreshRate();
+    })();
+
+    render();
+  </script>
+</body>
+</html>
