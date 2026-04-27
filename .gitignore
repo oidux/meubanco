@@ -4,5 +4,7 @@ Thumbs.db
 *.swo
 .idea/
 .vscode/
+.claude/
 node_modules/
 _unzip/
+*.xlsx
