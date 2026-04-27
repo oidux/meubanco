@@ -729,6 +729,13 @@
     /* The HTML `hidden` attribute is overridden by .btn { display: inline-flex }.
        Force it back so we can hide the Excluir button in add mode. */
     [hidden] { display: none !important; }
+
+    /* Body scroll lock when modal is open (works on iOS, unlike `overflow: hidden`). */
+    body.modal-open {
+      position: fixed;
+      width: 100%;
+      overflow-y: hidden;
+    }
     .modal-head {
       display: flex; align-items: center; justify-content: space-between;
       padding: 16px 20px;
@@ -1857,6 +1864,21 @@
     const EM_TITLE = document.getElementById('edit-modal-title');
     const EM_DELETE_BTN = EM.el.querySelector('[data-edit-action="delete"]');
 
+    /** Lock body scroll while a modal is open (iOS-safe via position: fixed). */
+    let scrollLockY = 0;
+    function lockBodyScroll() {
+      if (document.body.classList.contains('modal-open')) return; // already locked
+      scrollLockY = window.scrollY || window.pageYOffset || 0;
+      document.body.style.top = `-${scrollLockY}px`;
+      document.body.classList.add('modal-open');
+    }
+    function unlockBodyScroll() {
+      if (!document.body.classList.contains('modal-open')) return;
+      document.body.classList.remove('modal-open');
+      document.body.style.top = '';
+      window.scrollTo(0, scrollLockY);
+    }
+
     function openAddModal() {
       state.ui.editingId = null;
       state.ui.confirmId = null;
@@ -1868,6 +1890,7 @@
       EM_TITLE.textContent = 'Adicionar transação';
       EM_DELETE_BTN.hidden = true;
       EM.el.hidden = false;
+      lockBodyScroll();
       setTimeout(() => { EM.value.focus(); }, 0);
     }
 
@@ -1882,12 +1905,14 @@
       EM_TITLE.textContent = 'Editar transação';
       EM_DELETE_BTN.hidden = false;
       EM.el.hidden = false;
+      lockBodyScroll();
       setTimeout(() => { EM.value.focus(); EM.value.select(); }, 0);
     }
 
     function closeEditModal() {
       state.ui.editingId = null;
       EM.el.hidden = true;
+      unlockBodyScroll();
     }
 
     function setModalCurrency(cur) {
