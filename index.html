@@ -204,6 +204,15 @@
       color: var(--ink);
     }
     .stat-sub { font-size: 12px; color: var(--ink-3); font-family: var(--font-num); }
+    .stat-sub.is-credit, .hero-credit {
+      color: var(--ink-4);
+      font-variant-numeric: tabular-nums;
+      font-style: italic;
+    }
+    .hero-credit {
+      font-size: 12px;
+      margin-top: -2px;
+    }
 
     /* ============ Currency badge ============ */
     .cbadge {
@@ -830,6 +839,7 @@
             <span class="hero-symbol">€</span>
             <span class="hero-amount" id="hero-amount">0,00</span>
           </div>
+          <div class="hero-credit" id="hero-credit" hidden></div>
           <div class="hero-meta">
             <span id="hero-count-line"><span>0 transações</span></span>
             <span class="sep">·</span>
@@ -854,7 +864,7 @@
               <span class="stat-label">Outros</span>
             </div>
             <div class="stat-value" id="stat-eur">€ 0,00</div>
-            <div class="stat-sub">moedas em euro direto</div>
+            <div class="stat-sub" id="stat-eur-sub">moedas em euro direto</div>
           </div>
         </div>
       </section>
@@ -1219,9 +1229,32 @@
 
     function renderHero() {
       const stats = computeStats(state.transactions, state.rate.value);
-      document.getElementById('hero-amount').textContent = stats.eurTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      // Counter line: "X gastos · Y pagamentos" if there are any payments,
-      // otherwise just "X transações" (preserves the original wording).
+
+      // Clamp helper: when a balance goes negative (overpayment), the main
+      // value is shown as 0 and the negative is exposed as a small grey
+      // "credit" indicator. Returns the displayed balance plus the credit.
+      const clamp = (v) => v < 0
+        ? { displayed: 0, credit: -v }
+        : { displayed: v, credit: 0 };
+
+      const totalEur = clamp(stats.eurTotal);
+      const brl = clamp(stats.brl);
+      const eur = clamp(stats.eurOthers);
+
+      // Hero main value (always the clamped, non-negative number)
+      document.getElementById('hero-amount').textContent = totalEur.displayed.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      // Hero credit indicator (only when there's overpayment)
+      const heroCredit = document.getElementById('hero-credit');
+      if (totalEur.credit > 0) {
+        heroCredit.textContent = `−${fmtEUR(totalEur.credit)} (saldo a favor)`;
+        heroCredit.hidden = false;
+      } else {
+        heroCredit.hidden = true;
+        heroCredit.textContent = '';
+      }
+
+      // Counter line: "X gastos · Y pagamentos" when there are any payments
       const counter = document.getElementById('hero-count-line');
       if (stats.countPagamentos > 0) {
         counter.innerHTML = `<span>${stats.countGastos} ${stats.countGastos === 1 ? 'gasto' : 'gastos'}</span><span class="sep">·</span><span>${stats.countPagamentos} ${stats.countPagamentos === 1 ? 'pagamento' : 'pagamentos'}</span>`;
@@ -1229,10 +1262,31 @@
         counter.innerHTML = `<span>${stats.count} ${stats.count === 1 ? 'transação' : 'transações'}</span>`;
       }
       document.getElementById('hero-rate').textContent = 'R$ ' + state.rate.value.toFixed(2).replace('.', ',');
-      document.getElementById('hero-total-brl').textContent = fmtBRL(stats.eurTotal * state.rate.value);
-      document.getElementById('stat-brl').textContent = fmtBRL(stats.brl);
-      document.getElementById('stat-brl-sub').textContent = '≈ ' + fmtEUR(stats.brlInEur);
-      document.getElementById('stat-eur').textContent = fmtEUR(stats.eurOthers);
+      // BRL approximation tracks the displayed (clamped) hero value
+      document.getElementById('hero-total-brl').textContent = fmtBRL(totalEur.displayed * state.rate.value);
+
+      // BRL Cartão stat
+      const brlSub = document.getElementById('stat-brl-sub');
+      document.getElementById('stat-brl').textContent = fmtBRL(brl.displayed);
+      if (brl.credit > 0) {
+        brlSub.textContent = `−${fmtBRL(brl.credit)} (saldo a favor)`;
+        brlSub.classList.add('is-credit');
+      } else {
+        brlSub.textContent = '≈ ' + fmtEUR(brl.displayed / (state.rate.value || 1));
+        brlSub.classList.remove('is-credit');
+      }
+
+      // EUR Outros stat
+      const eurSub = document.getElementById('stat-eur-sub');
+      document.getElementById('stat-eur').textContent = fmtEUR(eur.displayed);
+      if (eur.credit > 0) {
+        eurSub.textContent = `−${fmtEUR(eur.credit)} (saldo a favor)`;
+        eurSub.classList.add('is-credit');
+      } else {
+        eurSub.textContent = 'moedas em euro direto';
+        eurSub.classList.remove('is-credit');
+      }
+
       renderSparkline();
     }
 
