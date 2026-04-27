@@ -719,11 +719,16 @@
       box-shadow: var(--shadow-lg);
       width: 100%;
       max-width: 460px;
+      min-width: 0;
       max-height: 90vh;
       display: flex;
       flex-direction: column;
       animation: modalin 0.18s ease-out;
+      overflow: hidden;
     }
+    /* The HTML `hidden` attribute is overridden by .btn { display: inline-flex }.
+       Force it back so we can hide the Excluir button in add mode. */
+    [hidden] { display: none !important; }
     .modal-head {
       display: flex; align-items: center; justify-content: space-between;
       padding: 16px 20px;
@@ -743,8 +748,10 @@
       padding: 18px 20px;
       display: flex; flex-direction: column; gap: 14px;
       overflow-y: auto;
+      overflow-x: hidden;
+      min-width: 0;
     }
-    .modal-body .field { display: flex; flex-direction: column; gap: 6px; }
+    .modal-body .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
     .modal-body .field > span { font-size: 11px; color: var(--ink-3); font-weight: 500; }
     .modal-body .field input {
       width: 100%; padding: 10px 14px;
@@ -758,10 +765,16 @@
       border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-soft);
     }
-    /* Date input has a native picker icon on the right — give it room. */
+    /* Date input has a native picker icon on the right — give it room.
+       iOS Safari assigns a large intrinsic min-width to <input type="date">
+       which can blow out the modal. Force it to obey the parent. */
     .modal-body .field input[type="date"] {
       min-height: 42px;
       padding-right: 12px;
+      max-width: 100%;
+      min-width: 0;
+      -webkit-min-logical-width: 0;
+      box-sizing: border-box;
     }
     /* Amount input needs left padding to fit the R$/€ prefix without overlap. */
     .modal-body .amount-wrap input {
