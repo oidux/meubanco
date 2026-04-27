@@ -660,6 +660,12 @@
       .empty,
       #file-import { display: none !important; }
 
+      /* Override the responsive (max-width: 880px) rules — A4 print
+         viewport is ~793px and would otherwise hide these columns. */
+      .td-cur, .td-eur { display: block !important; }
+      .hero { grid-template-columns: 1.4fr 1fr !important; }
+      .hero-side { grid-template-rows: 1fr 1fr !important; grid-template-columns: 1fr !important; }
+
       .app { padding: 0; max-width: 100%; }
 
       /* Print-only cover */
@@ -708,14 +714,15 @@
       }
       .txn-head { padding: 4mm 5mm; }
       .tr {
-        grid-template-columns: 22mm 36mm 14mm 28mm 1fr;
-        gap: 6mm;
+        grid-template-columns: 22mm 32mm 16mm 24mm 1fr !important;
+        gap: 4mm;
         padding: 2.4mm 5mm;
         page-break-inside: avoid;
         break-inside: avoid;
       }
       .th { background: #fbfaf7 !important; padding: 2mm 5mm; }
       .tr:not(.th):hover { background: transparent !important; }
+      .td-note { white-space: normal; word-break: break-word; }
 
       /* Suppress edit/danger row backgrounds in case state leaks */
       .tr-edit, .tr-danger {
