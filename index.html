@@ -165,6 +165,8 @@
       flex-wrap: wrap;
     }
     .hero-meta .sep { color: var(--ink-4); }
+    /* let count-line spans participate as direct children of the flex parent */
+    #hero-count-line { display: contents; }
     .hero-meta strong { color: var(--ink-2); font-weight: 600; }
     .hero-spark {
       margin-top: 4px;
@@ -308,6 +310,38 @@
     .seg-sm button { padding: 5px 10px; font-size: 11px; }
     .seg-xs button { padding: 3px 7px; font-size: 10px; }
 
+    /* ============ Type tabs (Gasto / Pagamento) ============ */
+    .type-tabs {
+      display: inline-flex;
+      gap: 4px;
+      background: var(--bg-2);
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-sm);
+      padding: 2px;
+    }
+    .type-tabs button {
+      border: none;
+      background: transparent;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ink-3);
+      border-radius: 4px;
+      transition: all 0.12s;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .type-tabs button:hover { color: var(--ink-2); }
+    .type-tabs button.on {
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: var(--shadow-sm);
+    }
+    .type-tabs button[data-type="pagamento"].on { color: var(--ok); }
+    .type-tabs .pulse {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: currentColor;
+    }
+
     /* ============ Buttons ============ */
     .btn {
       display: inline-flex; align-items: center; gap: 6px;
@@ -325,6 +359,11 @@
       border-color: var(--accent);
     }
     .btn-primary:hover { background: var(--accent-2); }
+    .btn-primary.is-payment {
+      background: var(--ok);
+      border-color: var(--ok);
+    }
+    .btn-primary.is-payment:hover { background: #15803d; border-color: #15803d; }
     .btn-add { padding: 9px 16px; }
     .btn-ghost {
       background: var(--surface);
@@ -428,6 +467,12 @@
     }
     .td-orig.is-brl { color: var(--brl-ink); }
     .td-orig.is-eur { color: var(--eur-ink); }
+    .td-orig.is-payment { color: var(--ok) !important; font-weight: 600; }
+    .td-eur.is-payment { color: var(--ok); }
+    .tr.is-payment {
+      box-shadow: inset 3px 0 0 var(--ok);
+    }
+    .tr.is-payment:hover { background: #f0fdf4 !important; }
     .td-eur {
       font-family: var(--font-num);
       font-variant-numeric: tabular-nums;
@@ -786,7 +831,7 @@
             <span class="hero-amount" id="hero-amount">0,00</span>
           </div>
           <div class="hero-meta">
-            <span><span id="hero-count">0</span> transações</span>
+            <span id="hero-count-line"><span>0 transações</span></span>
             <span class="sep">·</span>
             <span>cotação <strong id="hero-rate">R$ 0,00</strong></span>
           </div>
@@ -814,7 +859,16 @@
 
       <form class="addbar" id="add-form" autocomplete="off">
         <div class="addbar-title">
-          <span class="kicker">Adicionar gasto</span>
+          <div class="type-tabs" id="f-type" role="radiogroup" aria-label="Tipo de transação">
+            <button type="button" class="on" data-type="gasto" role="radio" aria-checked="true">
+              <span class="pulse" aria-hidden="true"></span>
+              Gasto
+            </button>
+            <button type="button" data-type="pagamento" role="radio" aria-checked="false">
+              <span class="pulse" aria-hidden="true"></span>
+              Pagamento
+            </button>
+          </div>
           <span class="hint">Enter para salvar · Tab pra navegar</span>
         </div>
         <div class="addbar-grid">
@@ -847,9 +901,9 @@
             <span>Observação</span>
             <input type="text" id="f-note" placeholder="Ex: Cartão, mercado, gasolina…" />
           </label>
-          <button type="submit" class="btn btn-primary btn-add">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            Adicionar
+          <button type="submit" class="btn btn-primary btn-add" id="f-submit">
+            <svg id="f-submit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            <span id="f-submit-text">Adicionar gasto</span>
           </button>
         </div>
       </form>
@@ -936,10 +990,26 @@
      * @typedef {Object} Transaction
      * @property {string} id
      * @property {string} date  ISO date YYYY-MM-DD
-     * @property {number} value Original value in the chosen currency
+     * @property {number} value Original value in the chosen currency (always positive)
      * @property {'BRL'|'EUR'} currency
+     * @property {'gasto'|'pagamento'} type Default 'gasto'. Pagamentos subtraem do saldo.
      * @property {string} note
      */
+
+    /** Sign multiplier for a transaction's contribution to the balance */
+    const sign = (t) => t.type === 'pagamento' ? -1 : 1;
+
+    /** Ensure a transaction has all required fields (migrate old shape) */
+    function normalizeTx(t) {
+      return {
+        id: t.id || uid(),
+        date: t.date,
+        value: Math.abs(Number(t.value)) || 0,
+        currency: t.currency === 'EUR' ? 'EUR' : 'BRL',
+        type: t.type === 'pagamento' ? 'pagamento' : 'gasto',
+        note: String(t.note || ''),
+      };
+    }
 
     // ============================================================
     // Storage
@@ -953,9 +1023,11 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return seedTransactions();
         const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.transactions)) return parsed.transactions;
-        if (Array.isArray(parsed)) return parsed;
-        return seedTransactions();
+        let arr = null;
+        if (parsed && Array.isArray(parsed.transactions)) arr = parsed.transactions;
+        else if (Array.isArray(parsed)) arr = parsed;
+        if (!arr) return seedTransactions();
+        return arr.map(normalizeTx);
       } catch (err) {
         console.warn('Falha ao ler transações, usando seed.', err);
         return seedTransactions();
@@ -981,17 +1053,17 @@
     /** @returns {Transaction[]} Initial data imported from "Empréstimo Elias.xlsx" */
     function seedTransactions() {
       return [
-        { id: 't1',  date: '2025-04-09', value: 2151.57, currency: 'BRL', note: 'Cartão' },
-        { id: 't2',  date: '2025-04-15', value: 908.32,  currency: 'BRL', note: 'Cartão' },
-        { id: 't3',  date: '2025-04-15', value: 50,      currency: 'EUR', note: 'Outros' },
-        { id: 't4',  date: '2025-04-16', value: 50,      currency: 'EUR', note: 'Outros' },
-        { id: 't5',  date: '2025-04-17', value: 541.31,  currency: 'BRL', note: 'Cartão (R$ 840.67 - R$ 299.36)' },
-        { id: 't6',  date: '2025-04-19', value: 60,      currency: 'EUR', note: 'Outros' },
-        { id: 't7',  date: '2025-04-20', value: 25,      currency: 'EUR', note: 'Outros' },
-        { id: 't8',  date: '2025-04-21', value: 913.12,  currency: 'BRL', note: 'Cartão' },
-        { id: 't9',  date: '2025-04-25', value: 93.11,   currency: 'BRL', note: 'Cartão (R$ 129.19 / 2)' },
-        { id: 't10', date: '2025-04-26', value: 450.45,  currency: 'BRL', note: 'Cartão (R$ 538.20 - R$ 87.75)' },
-        { id: 't11', date: '2025-04-27', value: 376.26,  currency: 'BRL', note: 'Cartão (Falta IOF)' },
+        { id: 't1',  date: '2025-04-09', value: 2151.57, currency: 'BRL', type: 'gasto', note: 'Cartão' },
+        { id: 't2',  date: '2025-04-15', value: 908.32,  currency: 'BRL', type: 'gasto', note: 'Cartão' },
+        { id: 't3',  date: '2025-04-15', value: 50,      currency: 'EUR', type: 'gasto', note: 'Outros' },
+        { id: 't4',  date: '2025-04-16', value: 50,      currency: 'EUR', type: 'gasto', note: 'Outros' },
+        { id: 't5',  date: '2025-04-17', value: 541.31,  currency: 'BRL', type: 'gasto', note: 'Cartão (R$ 840.67 - R$ 299.36)' },
+        { id: 't6',  date: '2025-04-19', value: 60,      currency: 'EUR', type: 'gasto', note: 'Outros' },
+        { id: 't7',  date: '2025-04-20', value: 25,      currency: 'EUR', type: 'gasto', note: 'Outros' },
+        { id: 't8',  date: '2025-04-21', value: 913.12,  currency: 'BRL', type: 'gasto', note: 'Cartão' },
+        { id: 't9',  date: '2025-04-25', value: 93.11,   currency: 'BRL', type: 'gasto', note: 'Cartão (R$ 129.19 / 2)' },
+        { id: 't10', date: '2025-04-26', value: 450.45,  currency: 'BRL', type: 'gasto', note: 'Cartão (R$ 538.20 - R$ 87.75)' },
+        { id: 't11', date: '2025-04-27', value: 376.26,  currency: 'BRL', type: 'gasto', note: 'Cartão (Falta IOF)' },
       ];
     }
 
@@ -1031,12 +1103,18 @@
     // Domain
     // ============================================================
     const valueInEUR = (t, rate) => t.currency === 'EUR' ? t.value : (rate > 0 ? t.value / rate : 0);
+    /** Signed value in EUR (negative for pagamento) */
+    const signedEUR = (t, rate) => valueInEUR(t, rate) * sign(t);
 
     function computeStats(items, rate) {
       let brl = 0, eurOthers = 0;
+      let countGastos = 0, countPagamentos = 0;
       for (const it of items) {
-        if (it.currency === 'BRL') brl += it.value;
-        else eurOthers += it.value;
+        const s = sign(it);
+        if (it.currency === 'BRL') brl += it.value * s;
+        else eurOthers += it.value * s;
+        if (it.type === 'pagamento') countPagamentos++;
+        else countGastos++;
       }
       return {
         brl,
@@ -1044,6 +1122,8 @@
         brlInEur: rate > 0 ? brl / rate : 0,
         eurTotal: (rate > 0 ? brl / rate : 0) + eurOthers,
         count: items.length,
+        countGastos,
+        countPagamentos,
       };
     }
 
@@ -1105,6 +1185,7 @@
         editingRate: false,
         rateDraft: '',
         formCurrency: 'BRL',
+        formType: 'gasto',
       },
     };
 
@@ -1137,7 +1218,14 @@
     function renderHero() {
       const stats = computeStats(state.transactions, state.rate.value);
       document.getElementById('hero-amount').textContent = stats.eurTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      document.getElementById('hero-count').textContent = stats.count;
+      // Counter line: "X gastos · Y pagamentos" if there are any payments,
+      // otherwise just "X transações" (preserves the original wording).
+      const counter = document.getElementById('hero-count-line');
+      if (stats.countPagamentos > 0) {
+        counter.innerHTML = `<span>${stats.countGastos} ${stats.countGastos === 1 ? 'gasto' : 'gastos'}</span><span class="sep">·</span><span>${stats.countPagamentos} ${stats.countPagamentos === 1 ? 'pagamento' : 'pagamentos'}</span>`;
+      } else {
+        counter.innerHTML = `<span>${stats.count} ${stats.count === 1 ? 'transação' : 'transações'}</span>`;
+      }
       document.getElementById('hero-rate').textContent = 'R$ ' + state.rate.value.toFixed(2).replace('.', ',');
       document.getElementById('stat-brl').textContent = fmtBRL(stats.brl);
       document.getElementById('stat-brl-sub').textContent = '≈ ' + fmtEUR(stats.brlInEur);
@@ -1149,16 +1237,21 @@
       const host = document.getElementById('hero-spark');
       const items = state.transactions;
       if (items.length === 0) { host.innerHTML = ''; return; }
+      // Daily signed deltas in EUR (gasto = +, pagamento = −)
       const map = {};
       for (const it of items) {
-        const eur = valueInEUR(it, state.rate.value);
-        map[it.date] = (map[it.date] || 0) + eur;
+        map[it.date] = (map[it.date] || 0) + signedEUR(it, state.rate.value);
       }
       const days = Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
-      const max = Math.max(...days.map(d => d[1])) || 1;
+      // Cumulative balance over time (this is what really matters)
+      let acc = 0;
+      const series = days.map(([d, delta]) => { acc += delta; return acc; });
+      const min = Math.min(0, ...series);
+      const max = Math.max(0, ...series);
+      const range = max - min || 1;
       const w = 100, h = 28;
-      const step = days.length > 1 ? w / (days.length - 1) : 0;
-      const pts = days.map(([_, v], i) => `${(i * step).toFixed(2)},${(h - (v / max) * h).toFixed(2)}`).join(' ');
+      const step = series.length > 1 ? w / (series.length - 1) : 0;
+      const pts = series.map((v, i) => `${(i * step).toFixed(2)},${(h - ((v - min) / range) * h).toFixed(2)}`).join(' ');
       host.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="spark"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round" /></svg>`;
     }
 
@@ -1191,6 +1284,7 @@
     function renderRow(item) {
       if (state.ui.editingId === item.id && state.ui.draft) {
         const d = state.ui.draft;
+        const dType = d.type === 'pagamento' ? 'pagamento' : 'gasto';
         return `
           <div class="tr tr-edit" role="row" data-id="${item.id}">
             <div class="td td-date"><input type="date" data-field="date" value="${d.date}" /></div>
@@ -1201,7 +1295,12 @@
                 <button type="button" class="${d.currency === 'EUR' ? 'on' : ''}" data-currency="EUR">EUR</button>
               </div>
             </div>
-            <div class="td td-eur muted">—</div>
+            <div class="td td-eur">
+              <div class="seg seg-xs" data-field="type">
+                <button type="button" class="${dType === 'gasto' ? 'on' : ''}" data-type="gasto" title="Gasto">+</button>
+                <button type="button" class="${dType === 'pagamento' ? 'on' : ''}" data-type="pagamento" title="Pagamento">−</button>
+              </div>
+            </div>
             <div class="td td-note"><input type="text" data-field="note" value="${escapeHtml(d.note || '')}" /></div>
             <div class="td td-act">
               <button class="iconbtn iconbtn-ok" data-action="save" title="Salvar" aria-label="Salvar">
@@ -1215,8 +1314,10 @@
       }
 
       const isConfirm = state.ui.confirmId === item.id;
+      const isPayment = item.type === 'pagamento';
       const eur = valueInEUR(item, state.rate.value);
-      const curClass = item.currency === 'EUR' ? 'is-eur' : 'is-brl';
+      const curClass = isPayment ? 'is-payment' : (item.currency === 'EUR' ? 'is-eur' : 'is-brl');
+      const signPrefix = isPayment ? '−' : '';
       const actions = isConfirm
         ? `
             <span class="confirm-label">Excluir?</span>
@@ -1232,12 +1333,14 @@
             </button>
           `;
 
+      const cls = ['tr', isConfirm ? 'tr-danger' : '', isPayment ? 'is-payment' : '']
+        .filter(Boolean).join(' ');
       return `
-        <div class="tr ${isConfirm ? 'tr-danger' : ''}" role="row" data-id="${item.id}">
+        <div class="${cls}" role="row" data-id="${item.id}">
           <div class="td td-date">${fmtDate(item.date)}</div>
-          <div class="td td-orig ${curClass}">${fmtMoney(item.value, item.currency)}</div>
+          <div class="td td-orig ${curClass}">${signPrefix}${fmtMoney(item.value, item.currency)}</div>
           <div class="td td-cur"><span class="cbadge cbadge-${item.currency.toLowerCase()}">${item.currency}</span></div>
-          <div class="td td-eur">${fmtEUR(eur)}</div>
+          <div class="td td-eur ${isPayment ? 'is-payment' : ''}">${signPrefix}${fmtEUR(eur)}</div>
           <div class="td td-note" title="${escapeHtml(item.note || '')}">${escapeHtml(item.note || '')}</div>
           <div class="td td-act">${actions}</div>
         </div>`;
@@ -1284,7 +1387,7 @@
     // Mutations
     // ============================================================
     function addTransaction(t) {
-      state.transactions.push({ ...t, id: uid() });
+      state.transactions.push(normalizeTx({ ...t, id: uid() }));
       saveTransactions();
       renderAll();
     }
@@ -1316,13 +1419,17 @@
 
     function exportCSV() {
       const sorted = [...state.transactions].sort((a, b) => a.date.localeCompare(b.date));
-      const rows = [['Data', 'Valor Original', 'Moeda', 'Valor em € (Hoje)', 'Observação']];
+      const rows = [['Data', 'Tipo', 'Valor Original', 'Moeda', 'Valor em € (sinal)', 'Observação']];
       for (const t of sorted) {
+        const s = sign(t);
+        const original = (t.value * s).toFixed(2).replace('.', ',');
+        const eur = (valueInEUR(t, state.rate.value) * s).toFixed(2).replace('.', ',');
         rows.push([
           t.date,
-          t.value.toFixed(2).replace('.', ','),
+          t.type === 'pagamento' ? 'Pagamento' : 'Gasto',
+          original,
           t.currency,
-          valueInEUR(t, state.rate.value).toFixed(2).replace('.', ','),
+          eur,
           (t.note || '').replace(/"/g, '""'),
         ]);
       }
@@ -1359,13 +1466,7 @@
             }
           }
           if (!confirm(`Importar ${items.length} transações? Isso substitui as atuais.`)) return;
-          state.transactions = items.map(t => ({
-            id: t.id || uid(),
-            date: t.date,
-            value: Number(t.value),
-            currency: t.currency,
-            note: String(t.note || ''),
-          }));
+          state.transactions = items.map(normalizeTx);
           if (parsed.rate) {
             const r = typeof parsed.rate === 'number'
               ? { value: parsed.rate, source: 'manual', updatedAt: null }
@@ -1408,6 +1509,32 @@
       prefix.classList.toggle('is-eur', cur === 'EUR');
     });
 
+    // Form: type tabs (Gasto / Pagamento)
+    document.getElementById('f-type').addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button[data-type]');
+      if (!btn) return;
+      const type = btn.dataset.type;
+      state.ui.formType = type;
+      const tabs = document.getElementById('f-type');
+      tabs.querySelectorAll('button').forEach(b => {
+        const on = b.dataset.type === type;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+      // Update submit button visual + label + plus/minus icon
+      const submit = document.getElementById('f-submit');
+      const submitText = document.getElementById('f-submit-text');
+      const submitIcon = document.getElementById('f-submit-icon');
+      const isPay = type === 'pagamento';
+      submit.classList.toggle('is-payment', isPay);
+      submitText.textContent = isPay ? 'Adicionar pagamento' : 'Adicionar gasto';
+      submitIcon.innerHTML = isPay ? '<path d="M5 12h14"/>' : '<path d="M12 5v14M5 12h14"/>';
+      // Update placeholder hint for the note field
+      document.getElementById('f-note').placeholder = isPay
+        ? 'Ex: Pix recebido, transferência…'
+        : 'Ex: Cartão, mercado, gasolina…';
+    });
+
     // Form: submit
     document.getElementById('add-form').addEventListener('submit', (ev) => {
       ev.preventDefault();
@@ -1415,18 +1542,23 @@
       const amountInput = document.getElementById('f-amount');
       const amount = parseAmount(amountInput.value);
       const currency = state.ui.formCurrency;
+      const type = state.ui.formType;
       const noteRaw = document.getElementById('f-note').value.trim();
-      const note = noteRaw || (currency === 'BRL' ? 'Cartão' : 'Outros');
+      const defaultNote = type === 'pagamento'
+        ? 'Pagamento'
+        : (currency === 'BRL' ? 'Cartão' : 'Outros');
+      const note = noteRaw || defaultNote;
       if (!date || !isFinite(amount) || amount <= 0) {
         toast('Preencha data e valor', 'err');
         amountInput.focus();
         return;
       }
-      addTransaction({ date, value: amount, currency, note });
+      addTransaction({ date, value: amount, currency, type, note });
       amountInput.value = '';
       document.getElementById('f-note').value = '';
       amountInput.focus();
-      toast(`Gasto adicionado: ${fmtMoney(amount, currency)}`, 'ok');
+      const label = type === 'pagamento' ? 'Pagamento registrado' : 'Gasto adicionado';
+      toast(`${label}: ${fmtMoney(amount, currency)}`, 'ok');
     });
 
     // Search
@@ -1454,9 +1586,15 @@
       const tr = ev.target.closest('.tr[data-id]');
       if (!tr) return;
       const id = tr.dataset.id;
-      const segBtn = ev.target.closest('.tr-edit .seg-xs button[data-currency]');
-      if (segBtn) {
-        if (state.ui.draft) state.ui.draft.currency = segBtn.dataset.currency;
+      const curBtn = ev.target.closest('.tr-edit .seg-xs button[data-currency]');
+      if (curBtn) {
+        if (state.ui.draft) state.ui.draft.currency = curBtn.dataset.currency;
+        renderTable();
+        return;
+      }
+      const typeBtn = ev.target.closest('.tr-edit .seg-xs button[data-type]');
+      if (typeBtn) {
+        if (state.ui.draft) state.ui.draft.type = typeBtn.dataset.type;
         renderTable();
         return;
       }
@@ -1525,11 +1663,12 @@
       if (!state.ui.draft) return;
       const d = state.ui.draft;
       const value = typeof d.value === 'number' ? d.value : parseAmount(d.value);
+      const type = d.type === 'pagamento' ? 'pagamento' : 'gasto';
       if (!d.date || !isFinite(value) || value <= 0 || (d.currency !== 'BRL' && d.currency !== 'EUR')) {
         toast('Dados inválidos', 'err');
         return;
       }
-      updateTransaction(id, { date: d.date, value, currency: d.currency, note: d.note || '' });
+      updateTransaction(id, { date: d.date, value, currency: d.currency, type, note: d.note || '' });
       state.ui.editingId = null;
       state.ui.draft = null;
       toast('Alteração salva', 'ok');
