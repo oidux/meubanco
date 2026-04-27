@@ -634,6 +634,98 @@
       overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
     }
 
+    /* Print-only blocks (hidden on screen, shown in print) */
+    .print-only { display: none; }
+
+    /* ============ Print (PDF export) ============ */
+    @media print {
+      @page { size: A4 portrait; margin: 14mm 12mm; }
+
+      body {
+        background: #ffffff !important;
+        color: #1c1a17 !important;
+        font-size: 10pt;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      /* Hide interactive / non-report elements */
+      .topbar-meta,
+      .addbar,
+      .toolbar,
+      .toaster,
+      .txn-head-right,
+      .td-act,
+      .hero-spark,
+      .empty,
+      #file-import { display: none !important; }
+
+      .app { padding: 0; max-width: 100%; }
+
+      /* Print-only cover */
+      .print-only { display: block !important; }
+      .print-cover {
+        margin-bottom: 8mm;
+        padding-bottom: 4mm;
+        border-bottom: 1px solid #ece7df;
+        font-size: 10pt;
+        color: #4a463f;
+        display: flex;
+        justify-content: space-between;
+        gap: 12mm;
+      }
+      .print-cover strong { color: #1c1a17; font-weight: 600; }
+
+      /* Topbar simplification */
+      .topbar { margin-bottom: 6mm; }
+      .brand-mark { box-shadow: none !important; }
+
+      /* Hero simplification */
+      .hero {
+        background: #ffffff !important;
+        border: 1px solid #ece7df;
+        box-shadow: none !important;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        padding: 8mm 8mm;
+        gap: 8mm;
+      }
+      .hero::before { display: none !important; }
+      .hero-amount { font-size: 28pt; }
+      .hero-symbol { font-size: 16pt; }
+      .stat {
+        background: #fbfaf7 !important;
+        box-shadow: none !important;
+        padding: 4mm 5mm;
+      }
+      .stat-value { font-size: 14pt; }
+
+      /* Table */
+      .txn-card {
+        box-shadow: none !important;
+        border-color: #ece7df;
+        page-break-inside: auto;
+      }
+      .txn-head { padding: 4mm 5mm; }
+      .tr {
+        grid-template-columns: 22mm 36mm 14mm 28mm 1fr;
+        gap: 6mm;
+        padding: 2.4mm 5mm;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .th { background: #fbfaf7 !important; padding: 2mm 5mm; }
+      .tr:not(.th):hover { background: transparent !important; }
+
+      /* Suppress edit/danger row backgrounds in case state leaks */
+      .tr-edit, .tr-danger {
+        background: transparent !important;
+      }
+
+      /* Avoid orphan brand */
+      .topbar { page-break-after: avoid; break-after: avoid; }
+    }
+
     /* ============ Responsive ============ */
     @media (max-width: 880px) {
       .app { padding: 18px 14px 60px; }
@@ -654,6 +746,11 @@
 </head>
 <body>
   <div class="app">
+    <div class="print-only print-cover" aria-hidden="true">
+      <div>Relatório · <strong id="report-title">Empréstimo</strong></div>
+      <div>Gerado em <strong id="report-generated">—</strong></div>
+    </div>
+
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">€</div>
@@ -795,6 +892,10 @@
             <button class="btn btn-ghost" id="btn-export-csv" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
               Exportar CSV
+            </button>
+            <button class="btn btn-ghost" id="btn-export-pdf" type="button" title="Abre o diálogo de impressão · escolha 'Salvar como PDF'">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h6"/><path d="M14 13h2"/></svg>
+              Exportar PDF
             </button>
             <button class="btn btn-ghost" id="btn-export-json" type="button">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -1462,8 +1563,34 @@
       toast('Cotação atualizada', 'ok');
     }
 
+    // PDF export via native print dialog (user picks "Save as PDF")
+    function exportPDF() {
+      // Bail out of any in-progress edit/confirm so the print captures clean rows
+      if (state.ui.editingId || state.ui.confirmId || state.ui.editingRate) {
+        state.ui.editingId = null;
+        state.ui.draft = null;
+        state.ui.confirmId = null;
+        state.ui.editingRate = false;
+        renderAll();
+      }
+      updateReportMeta();
+      window.print();
+    }
+
+    function updateReportMeta() {
+      const fmt = new Intl.DateTimeFormat('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+      document.getElementById('report-generated').textContent = fmt.format(new Date());
+    }
+
+    // Keep the printed report meta fresh if the user uses the OS print shortcut (Ctrl/Cmd+P)
+    window.addEventListener('beforeprint', updateReportMeta);
+
     // Toolbar buttons
     document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+    document.getElementById('btn-export-pdf').addEventListener('click', exportPDF);
     document.getElementById('btn-export-json').addEventListener('click', exportJSON);
     document.getElementById('btn-import-json').addEventListener('click', () => {
       document.getElementById('file-import').click();
