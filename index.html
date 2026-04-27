@@ -176,6 +176,15 @@
     }
     .spark { width: 100%; height: 100%; display: block; }
 
+    .hero-cta {
+      margin-top: 14px;
+      display: flex;
+    }
+    .hero-cta .btn { padding: 11px 18px; font-size: 13px; align-self: flex-start; }
+    @media (max-width: 880px) {
+      .hero-cta .btn { width: 100%; justify-content: center; padding: 13px; }
+    }
+
     .hero-side {
       display: grid;
       grid-template-rows: 1fr 1fr;
@@ -738,7 +747,7 @@
     .modal-body .field { display: flex; flex-direction: column; gap: 6px; }
     .modal-body .field > span { font-size: 11px; color: var(--ink-3); font-weight: 500; }
     .modal-body .field input {
-      width: 100%; padding: 10px 12px;
+      width: 100%; padding: 10px 14px;
       border: 1px solid var(--line-2); border-radius: var(--r-sm);
       background: var(--surface); color: var(--ink);
       font-size: 14px; outline: none;
@@ -748,6 +757,19 @@
     .modal-body .field input:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    /* Date input has a native picker icon on the right — give it room. */
+    .modal-body .field input[type="date"] {
+      min-height: 42px;
+      padding-right: 12px;
+    }
+    /* Amount input needs left padding to fit the R$/€ prefix without overlap. */
+    .modal-body .amount-wrap input {
+      padding-left: 36px;
+    }
+    .modal-body .amount-wrap .amount-prefix {
+      font-size: 14px;
+      left: 12px;
     }
     .modal-body .row-2 {
       display: grid;
@@ -936,6 +958,12 @@
             <span title="Valor total convertido para reais pela cotação atual">≈ <strong id="hero-total-brl">R$ 0,00</strong></span>
           </div>
           <div class="hero-spark" id="hero-spark" aria-hidden="true"></div>
+          <div class="hero-cta">
+            <button type="button" class="btn btn-primary" id="btn-open-add">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Adicionar transação
+            </button>
+          </div>
         </div>
         <div class="hero-side">
           <div class="stat">
@@ -956,57 +984,6 @@
           </div>
         </div>
       </section>
-
-      <form class="addbar" id="add-form" autocomplete="off">
-        <div class="addbar-title">
-          <div class="type-tabs" id="f-type" role="radiogroup" aria-label="Tipo de transação">
-            <button type="button" class="on" data-type="gasto" role="radio" aria-checked="true">
-              <span class="pulse" aria-hidden="true"></span>
-              Gasto
-            </button>
-            <button type="button" data-type="pagamento" role="radio" aria-checked="false">
-              <span class="pulse" aria-hidden="true"></span>
-              Pagamento
-            </button>
-          </div>
-          <span class="hint">Enter para salvar · Tab pra navegar</span>
-        </div>
-        <div class="addbar-grid">
-          <label class="field field-date">
-            <span>Data</span>
-            <input type="date" id="f-date" required />
-          </label>
-          <label class="field field-amount">
-            <span>Valor</span>
-            <div class="amount-wrap">
-              <span class="amount-prefix is-brl" id="f-amount-prefix">R$</span>
-              <input
-                type="text"
-                id="f-amount"
-                inputmode="decimal"
-                placeholder="0,00"
-                autocomplete="off"
-                required
-              />
-            </div>
-          </label>
-          <div class="field field-currency">
-            <span>Moeda</span>
-            <div class="seg" id="f-currency" role="radiogroup" aria-label="Moeda">
-              <button type="button" class="on" data-currency="BRL" role="radio" aria-checked="true">BRL</button>
-              <button type="button" data-currency="EUR" role="radio" aria-checked="false">EUR</button>
-            </div>
-          </div>
-          <label class="field field-note">
-            <span>Observação</span>
-            <input type="text" id="f-note" placeholder="Ex: Cartão, mercado, gasolina…" />
-          </label>
-          <button type="submit" class="btn btn-primary btn-add" id="f-submit">
-            <svg id="f-submit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            <span id="f-submit-text">Adicionar gasto</span>
-          </button>
-        </div>
-      </form>
 
       <section class="txn-card" aria-label="Transações">
         <header class="txn-head">
@@ -1799,78 +1776,8 @@
     // Event wiring
     // ============================================================
 
-    // Form: default date today
-    document.getElementById('f-date').value = todayISO();
-
-    // Form: currency segmented
-    document.getElementById('f-currency').addEventListener('click', (ev) => {
-      const btn = ev.target.closest('button[data-currency]');
-      if (!btn) return;
-      const cur = btn.dataset.currency;
-      state.ui.formCurrency = cur;
-      const seg = document.getElementById('f-currency');
-      seg.querySelectorAll('button').forEach(b => {
-        const on = b.dataset.currency === cur;
-        b.classList.toggle('on', on);
-        b.setAttribute('aria-checked', on ? 'true' : 'false');
-      });
-      const prefix = document.getElementById('f-amount-prefix');
-      prefix.textContent = cur === 'BRL' ? 'R$' : '€';
-      prefix.classList.toggle('is-brl', cur === 'BRL');
-      prefix.classList.toggle('is-eur', cur === 'EUR');
-    });
-
-    // Form: type tabs (Gasto / Pagamento)
-    document.getElementById('f-type').addEventListener('click', (ev) => {
-      const btn = ev.target.closest('button[data-type]');
-      if (!btn) return;
-      const type = btn.dataset.type;
-      state.ui.formType = type;
-      const tabs = document.getElementById('f-type');
-      tabs.querySelectorAll('button').forEach(b => {
-        const on = b.dataset.type === type;
-        b.classList.toggle('on', on);
-        b.setAttribute('aria-checked', on ? 'true' : 'false');
-      });
-      // Update submit button visual + label + plus/minus icon
-      const submit = document.getElementById('f-submit');
-      const submitText = document.getElementById('f-submit-text');
-      const submitIcon = document.getElementById('f-submit-icon');
-      const isPay = type === 'pagamento';
-      submit.classList.toggle('is-payment', isPay);
-      submitText.textContent = isPay ? 'Adicionar pagamento' : 'Adicionar gasto';
-      submitIcon.innerHTML = isPay ? '<path d="M5 12h14"/>' : '<path d="M12 5v14M5 12h14"/>';
-      // Update placeholder hint for the note field
-      document.getElementById('f-note').placeholder = isPay
-        ? 'Ex: Pix recebido, transferência…'
-        : 'Ex: Cartão, mercado, gasolina…';
-    });
-
-    // Form: submit
-    document.getElementById('add-form').addEventListener('submit', (ev) => {
-      ev.preventDefault();
-      const date = document.getElementById('f-date').value;
-      const amountInput = document.getElementById('f-amount');
-      const amount = parseAmount(amountInput.value);
-      const currency = state.ui.formCurrency;
-      const type = state.ui.formType;
-      const noteRaw = document.getElementById('f-note').value.trim();
-      const defaultNote = type === 'pagamento'
-        ? 'Pagamento'
-        : (currency === 'BRL' ? 'Cartão' : 'Outros');
-      const note = noteRaw || defaultNote;
-      if (!date || !isFinite(amount) || amount <= 0) {
-        toast('Preencha data e valor', 'err');
-        amountInput.focus();
-        return;
-      }
-      addTransaction({ date, value: amount, currency, type, note });
-      amountInput.value = '';
-      document.getElementById('f-note').value = '';
-      amountInput.focus();
-      const label = type === 'pagamento' ? 'Pagamento registrado' : 'Gasto adicionado';
-      toast(`${label}: ${fmtMoney(amount, currency)}`, 'ok');
-    });
+    // "Adicionar transação" button in hero opens the modal in add mode
+    document.getElementById('btn-open-add').addEventListener('click', openAddModal);
 
     // Search
     document.getElementById('search-input').addEventListener('input', (ev) => {
@@ -1932,6 +1839,23 @@
       prefix: document.getElementById('em-amount-prefix'),
     };
 
+    const EM_TITLE = document.getElementById('edit-modal-title');
+    const EM_DELETE_BTN = EM.el.querySelector('[data-edit-action="delete"]');
+
+    function openAddModal() {
+      state.ui.editingId = null;
+      state.ui.confirmId = null;
+      EM.date.value = todayISO();
+      EM.value.value = '';
+      EM.note.value = '';
+      setModalCurrency('BRL');
+      setModalType('gasto');
+      EM_TITLE.textContent = 'Adicionar transação';
+      EM_DELETE_BTN.hidden = true;
+      EM.el.hidden = false;
+      setTimeout(() => { EM.value.focus(); }, 0);
+    }
+
     function openEditModal(item) {
       state.ui.editingId = item.id;
       state.ui.confirmId = null;
@@ -1940,8 +1864,9 @@
       EM.note.value = item.note || '';
       setModalCurrency(item.currency);
       setModalType(item.type);
+      EM_TITLE.textContent = 'Editar transação';
+      EM_DELETE_BTN.hidden = false;
       EM.el.hidden = false;
-      // Focus value field (most likely thing user wants to change)
       setTimeout(() => { EM.value.focus(); EM.value.select(); }, 0);
     }
 
@@ -1979,21 +1904,29 @@
     }
 
     function commitModal() {
-      const id = state.ui.editingId;
-      if (!id) return;
       const date = EM.date.value;
       const value = parseAmount(EM.value.value);
       const currency = getModalCurrency();
       const type = getModalType();
       const note = EM.note.value.trim();
       if (!date || !isFinite(value) || value <= 0 || (currency !== 'BRL' && currency !== 'EUR')) {
-        toast('Dados inválidos', 'err');
+        toast('Preencha data e valor', 'err');
         return;
       }
+      const id = state.ui.editingId; // null = add mode, id = edit mode
       // Close modal BEFORE the optimistic re-render
       closeEditModal();
-      updateTransaction(id, { date, value, currency, type, note });
-      toast('Alteração salva', 'ok');
+      if (id) {
+        updateTransaction(id, { date, value, currency, type, note });
+        toast('Alteração salva', 'ok');
+      } else {
+        const defaultNote = type === 'pagamento'
+          ? 'Pagamento'
+          : (currency === 'BRL' ? 'Cartão' : 'Outros');
+        addTransaction({ date, value, currency, type, note: note || defaultNote });
+        const label = type === 'pagamento' ? 'Pagamento registrado' : 'Gasto adicionado';
+        toast(`${label}: ${fmtMoney(value, currency)}`, 'ok');
+      }
     }
 
     async function deleteFromModal() {
