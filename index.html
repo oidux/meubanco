@@ -992,8 +992,18 @@
 
   <div class="toaster" id="toaster" role="status" aria-live="polite"></div>
 
-  <script>
+  <script type="module">
     'use strict';
+
+    // ============================================================
+    // Supabase client (sync entre dispositivos via banco na nuvem)
+    // ============================================================
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+    const SUPABASE_URL = 'https://xzqsbwwotvymdpgzmnaa.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_aO5uFk4tZiL8wu4nzSDDbQ_IiiGrQwL';
+    const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      realtime: { params: { eventsPerSecond: 5 } },
+    });
 
     // ============================================================
     // Types (JSDoc)
@@ -1028,6 +1038,7 @@
     // ============================================================
     const STORAGE_KEY = 'emprestimo-elias.v1';
     const RATE_KEY = 'emprestimo-elias.rate.v1';
+    const BOOTSTRAPPED_KEY = 'emprestimo-elias.bootstrapped.v2';
 
     /** @returns {Transaction[]} */
     function loadTransactions() {
@@ -1077,6 +1088,70 @@
         { id: 't10', date: '2025-04-26', value: 450.45,  currency: 'BRL', type: 'gasto', note: 'Cartão (R$ 538.20 - R$ 87.75)' },
         { id: 't11', date: '2025-04-27', value: 376.26,  currency: 'BRL', type: 'gasto', note: 'Cartão (Falta IOF)' },
       ];
+    }
+
+    // ============================================================
+    // Database layer (Supabase) — single source of truth
+    // localStorage is now just a fast-paint cache before the network responds.
+    // ============================================================
+
+    /** Map a row from Postgres to the in-app Transaction shape. */
+    function mapDbRow(r) {
+      return normalizeTx({
+        id: r.id,
+        date: r.date,
+        value: Number(r.value),
+        currency: r.currency,
+        type: r.type,
+        note: r.note,
+      });
+    }
+
+    /** Strip in-app extras and keep only the columns Postgres knows about. */
+    function toDbRow(t) {
+      return {
+        id: t.id,
+        date: t.date,
+        value: t.value,
+        currency: t.currency,
+        type: t.type,
+        note: t.note || '',
+      };
+    }
+
+    const db = {
+      async fetchAll() {
+        const { data, error } = await sb.from('transactions').select('*');
+        if (error) throw error;
+        return (data || []).map(mapDbRow);
+      },
+      async insert(t) {
+        const { error } = await sb.from('transactions').insert(toDbRow(t));
+        if (error) throw error;
+      },
+      async update(id, patch) {
+        const { error } = await sb.from('transactions').update(patch).eq('id', id);
+        if (error) throw error;
+      },
+      async remove(id) {
+        const { error } = await sb.from('transactions').delete().eq('id', id);
+        if (error) throw error;
+      },
+      async upsertMany(items) {
+        const rows = items.map(toDbRow);
+        const { error } = await sb.from('transactions').upsert(rows, { onConflict: 'id' });
+        if (error) throw error;
+      },
+    };
+
+    /** Two transactions equal in all user-visible fields. */
+    function txEquals(a, b) {
+      return a.id === b.id
+        && a.date === b.date
+        && a.value === b.value
+        && a.currency === b.currency
+        && a.type === b.type
+        && (a.note || '') === (b.note || '');
     }
 
     // ============================================================
@@ -1437,28 +1512,74 @@
     }
 
     function renderTopbarStatus() {
-      document.getElementById('topbar-status-text').textContent = formatRelative(state.lastSaved);
+      // The topbar text is owned by setSyncState (Conectando/Sincronizado/Offline).
+      // We don't overwrite it here once sync state is known. Kept for compatibility.
+      if (!state.syncState) {
+        document.getElementById('topbar-status-text').textContent = formatRelative(state.lastSaved);
+      }
     }
 
     // ============================================================
-    // Mutations
+    // Mutations — optimistic UI: state updates immediately, then DB call.
+    // If the DB call fails, we revert and toast the error.
     // ============================================================
-    function addTransaction(t) {
-      state.transactions.push(normalizeTx({ ...t, id: uid() }));
+    async function addTransaction(t) {
+      const newT = normalizeTx({ ...t, id: uid() });
+      // Optimistic insert
+      state.transactions.push(newT);
       saveTransactions();
       renderAll();
+      try {
+        await db.insert(newT);
+      } catch (err) {
+        // Revert on failure
+        state.transactions = state.transactions.filter(x => x.id !== newT.id);
+        saveTransactions();
+        renderAll();
+        console.error(err);
+        toast('Falha ao salvar — sem conexão?', 'err');
+      }
     }
-    function updateTransaction(id, patch) {
+
+    async function updateTransaction(id, patch) {
       const idx = state.transactions.findIndex(x => x.id === id);
       if (idx === -1) return;
-      state.transactions[idx] = { ...state.transactions[idx], ...patch };
+      const before = state.transactions[idx];
+      const after = { ...before, ...patch };
+      // Optimistic update
+      state.transactions[idx] = after;
       saveTransactions();
       renderAll();
+      try {
+        await db.update(id, toDbRow(after));
+      } catch (err) {
+        // Revert
+        state.transactions[idx] = before;
+        saveTransactions();
+        renderAll();
+        console.error(err);
+        toast('Falha ao salvar alteração', 'err');
+      }
     }
-    function deleteTransaction(id) {
-      state.transactions = state.transactions.filter(x => x.id !== id);
+
+    async function deleteTransaction(id) {
+      const idx = state.transactions.findIndex(x => x.id === id);
+      if (idx === -1) return;
+      const removed = state.transactions[idx];
+      // Optimistic delete
+      state.transactions.splice(idx, 1);
       saveTransactions();
       renderAll();
+      try {
+        await db.remove(id);
+      } catch (err) {
+        // Revert
+        state.transactions.splice(idx, 0, removed);
+        saveTransactions();
+        renderAll();
+        console.error(err);
+        toast('Falha ao excluir', 'err');
+      }
     }
 
     // ============================================================
@@ -1509,7 +1630,7 @@
 
     function importJSON(file) {
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         try {
           const parsed = JSON.parse(String(reader.result));
           const items = Array.isArray(parsed)
@@ -1522,8 +1643,19 @@
               throw new Error('Transação inválida');
             }
           }
-          if (!confirm(`Importar ${items.length} transações? Isso substitui as atuais.`)) return;
-          state.transactions = items.map(normalizeTx);
+          if (!confirm(`Importar ${items.length} transações? Isso substitui as atuais (afeta o Elias também).`)) return;
+          const normalized = items.map(normalizeTx);
+          // 1. Wipe DB and replace with imported data
+          try {
+            const { error: delErr } = await sb.from('transactions').delete().not('id', 'is', null);
+            if (delErr) throw delErr;
+            await db.upsertMany(normalized);
+          } catch (err) {
+            console.error(err);
+            toast('Falha ao importar pro banco', 'err');
+            return;
+          }
+          state.transactions = normalized;
           if (parsed.rate) {
             const r = typeof parsed.rate === 'number'
               ? { value: parsed.rate, source: 'manual', updatedAt: null }
@@ -1803,25 +1935,142 @@
       if (file) importJSON(file);
       ev.target.value = '';
     });
-    document.getElementById('btn-clear').addEventListener('click', () => {
-      if (!confirm('Apagar TODOS os lançamentos? Essa ação não pode ser desfeita.')) return;
+    document.getElementById('btn-clear').addEventListener('click', async () => {
+      if (!confirm('Apagar TODOS os lançamentos? Essa ação não pode ser desfeita — afeta também o Elias.')) return;
+      const backup = [...state.transactions];
       state.transactions = [];
       saveTransactions();
       renderAll();
-      toast('Tudo apagado', 'warn');
+      try {
+        // Delete every row in the table
+        const { error } = await sb.from('transactions').delete().not('id', 'is', null);
+        if (error) throw error;
+        toast('Tudo apagado', 'warn');
+      } catch (err) {
+        console.error(err);
+        state.transactions = backup;
+        saveTransactions();
+        renderAll();
+        toast('Falha ao limpar — sem conexão?', 'err');
+      }
     });
 
     // Refresh topbar relative time every minute
     setInterval(renderTopbarStatus, 60000);
     setInterval(renderRateSync, 60000);
 
-    // Auto-refresh rate on load if missing or stale (>12h)
-    (function autoRefreshOnLoad() {
+    // ============================================================
+    // Realtime — listen to changes from other devices/users
+    // ============================================================
+    function applyRealtimeChange(payload) {
+      const { eventType, new: newRow, old: oldRow } = payload;
+      if (eventType === 'INSERT' || eventType === 'UPDATE') {
+        const t = mapDbRow(newRow);
+        const idx = state.transactions.findIndex(x => x.id === t.id);
+        if (idx >= 0) {
+          if (txEquals(state.transactions[idx], t)) return; // self-echo, skip
+          state.transactions[idx] = t;
+        } else {
+          state.transactions.push(t);
+        }
+      } else if (eventType === 'DELETE') {
+        const id = oldRow && oldRow.id;
+        if (!id) return;
+        const idx = state.transactions.findIndex(x => x.id === id);
+        if (idx === -1) return; // already gone (probably self-echo)
+        state.transactions.splice(idx, 1);
+      } else {
+        return;
+      }
+      saveTransactions();
+      renderAll();
+    }
+
+    function setSyncState(syncState) {
+      state.syncState = syncState;
+      const status = document.getElementById('topbar-status');
+      const text = document.getElementById('topbar-status-text');
+      const dot = status.querySelector('.live-dot');
+      status.dataset.sync = syncState;
+      if (syncState === 'connected') {
+        text.textContent = 'Sincronizado';
+        dot.style.background = '';
+        dot.style.boxShadow = '';
+      } else if (syncState === 'connecting') {
+        text.textContent = 'Conectando…';
+        dot.style.background = '#d97706';
+        dot.style.boxShadow = '0 0 0 3px rgba(217, 119, 6, 0.15)';
+      } else if (syncState === 'offline') {
+        text.textContent = 'Offline · cache local';
+        dot.style.background = '#dc2626';
+        dot.style.boxShadow = '0 0 0 3px rgba(220, 38, 38, 0.15)';
+      }
+    }
+
+    function setupRealtime() {
+      sb.channel('transactions-changes')
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'transactions' },
+          (payload) => applyRealtimeChange(payload))
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') setSyncState('connected');
+          else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            setSyncState('offline');
+          }
+        });
+    }
+
+    // ============================================================
+    // Bootstrap — fast paint from cache, then sync from DB, then realtime
+    // ============================================================
+    async function bootstrap() {
+      setSyncState('connecting');
+      // 1. Paint from cache for instant feedback
+      renderAll();
+
+      // 2. Auto-refresh rate from API in background (independent of DB)
       const stale = !state.rate.updatedAt
         || (Date.now() - new Date(state.rate.updatedAt).getTime()) > 12 * 60 * 60 * 1000;
-      renderAll();
       if (stale && navigator.onLine !== false) refreshRate();
-    })();
+
+      // 3. Fetch authoritative data from Supabase
+      let dbData;
+      try {
+        dbData = await db.fetchAll();
+      } catch (err) {
+        console.error('Falha ao carregar do Supabase:', err);
+        setSyncState('offline');
+        toast('Sem conexão com o banco — mostrando cache local', 'warn');
+        return;
+      }
+
+      // 4. First-run only: if DB is empty AND we've never bootstrapped before,
+      // migrate local cache (or seed) up to the DB. After this flag is set,
+      // an empty DB is trusted (e.g. after a "Limpar tudo") — never re-seeded.
+      const alreadyBootstrapped = localStorage.getItem(BOOTSTRAPPED_KEY) === '1';
+      if (dbData.length === 0 && !alreadyBootstrapped) {
+        const initial = state.transactions.length > 0
+          ? state.transactions
+          : seedTransactions();
+        try {
+          await db.upsertMany(initial);
+          dbData = initial;
+          toast('Dados sincronizados pro banco', 'ok');
+        } catch (err) {
+          console.error('Falha ao popular dados iniciais:', err);
+        }
+      }
+
+      state.transactions = dbData;
+      saveTransactions();
+      localStorage.setItem(BOOTSTRAPPED_KEY, '1');
+      renderAll();
+
+      // 5. Subscribe to realtime changes from now on
+      setupRealtime();
+    }
+
+    bootstrap();
   </script>
 </body>
 </html>
