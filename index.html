@@ -2013,11 +2013,39 @@
           { event: '*', schema: 'public', table: 'transactions' },
           (payload) => applyRealtimeChange(payload))
         .subscribe((status) => {
-          if (status === 'SUBSCRIBED') setSyncState('connected');
-          else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-            setSyncState('offline');
-          }
+          // REST already drives the sync indicator; realtime is an enhancement.
+          // Just log so we know what's happening on mobile/restrictive networks.
+          console.log('[realtime]', status);
         });
+    }
+
+    /** Fallback for when realtime WebSocket isn't working (mobile, hostile
+     *  networks, iOS background): re-fetch from the DB whenever the tab
+     *  becomes visible again. Cheap and reliable. */
+    function setupVisibilityRefetch() {
+      document.addEventListener('visibilitychange', async () => {
+        if (document.visibilityState !== 'visible') return;
+        try {
+          const fresh = await db.fetchAll();
+          // Reconcile: replace any item whose data differs, add new ones, remove gone ones
+          const incomingById = new Map(fresh.map(t => [t.id, t]));
+          let changed = false;
+          // Remove items that no longer exist
+          state.transactions = state.transactions.filter(t => {
+            if (!incomingById.has(t.id)) { changed = true; return false; }
+            return true;
+          });
+          // Update or add
+          for (const t of fresh) {
+            const idx = state.transactions.findIndex(x => x.id === t.id);
+            if (idx === -1) { state.transactions.push(t); changed = true; }
+            else if (!txEquals(state.transactions[idx], t)) {
+              state.transactions[idx] = t; changed = true;
+            }
+          }
+          if (changed) { saveTransactions(); renderAll(); }
+        } catch (err) { console.warn('[refetch on visible]', err); }
+      });
     }
 
     // ============================================================
@@ -2037,6 +2065,7 @@
       let dbData;
       try {
         dbData = await db.fetchAll();
+        setSyncState('connected');
       } catch (err) {
         console.error('Falha ao carregar do Supabase:', err);
         setSyncState('offline');
@@ -2068,6 +2097,10 @@
 
       // 5. Subscribe to realtime changes from now on
       setupRealtime();
+
+      // 6. Visibility fallback — re-fetch when the tab becomes visible.
+      //    Important on mobile where WS can be killed or blocked.
+      setupVisibilityRefetch();
     }
 
     bootstrap();
