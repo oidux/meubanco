@@ -1857,9 +1857,11 @@
         toast('Dados inválidos', 'err');
         return;
       }
-      updateTransaction(id, { date: d.date, value, currency: d.currency, type, note: d.note || '' });
+      // Clear the edit UI *before* the optimistic re-render fires from updateTransaction,
+      // otherwise the row re-renders still in edit mode.
       state.ui.editingId = null;
       state.ui.draft = null;
+      updateTransaction(id, { date: d.date, value, currency: d.currency, type, note: d.note || '' });
       toast('Alteração salva', 'ok');
     }
 
