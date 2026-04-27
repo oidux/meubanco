@@ -1,58 +1,44 @@
-# Empréstimo Elias
+# Empréstimo · controle de gastos
 
-Controle de gastos em duas moedas (BRL e EUR) com totais que se atualizam automaticamente a cada lançamento. App estático em um único arquivo `index.html` — sem build, sem servidor, sem dependências em tempo de execução.
+App de controle de gastos em duas moedas (BRL e EUR) com totais que se atualizam automaticamente a cada lançamento. Arquivo único `index.html`, sem build, sem servidor, sem dependências em runtime (apenas Google Fonts e a API pública de cotação).
 
 ## Como usar localmente
 
-1. Dê duplo clique em `index.html` (abre no navegador padrão).
-2. Tudo é salvo automaticamente no `localStorage` do navegador.
+Dê duplo clique em `index.html` — abre no navegador padrão. Tudo é salvo automaticamente no `localStorage`.
 
 ## Funcionalidades
 
-- **Adicionar gasto:** data, valor original, moeda (BRL/EUR), observação.
-- **Editar/excluir** qualquer linha pela própria tabela.
-- **Cotação EUR → BRL automática:** busca da [AwesomeAPI](https://docs.awesomeapi.com.br/api-de-moedas) ao abrir o app (e quando a cotação salva tem mais de 12h). Pode ser sobrescrita manualmente a qualquer momento.
-- **Totais em tempo real:**
-  - Total Cartão (BRL): soma dos valores em BRL, no original e convertidos para €.
-  - Total Outros (EUR): soma dos valores em EUR.
-  - Total Geral (€): soma de tudo já em €.
-- **Exportar CSV** (abre direto no Excel) e **JSON** (backup).
-- **Importar JSON** para restaurar um backup.
+- **Hero com Total Geral** em € grande, sparkline da evolução por dia e dois sub-totais (Cartão BRL e Outros EUR).
+- **Adicionar gasto** com prefixo R$/€ no campo valor que muda conforme a moeda escolhida no segmented control.
+- **Tabela** com busca por observação, filtro por moeda (Tudo / BRL / EUR), edição inline e confirmação de exclusão inline (sem `confirm()` no meio do fluxo).
+- **Cotação EUR → BRL automática** (AwesomeAPI ao abrir o app, refresh quando estiver com mais de 12h). Pill clicável no rodapé pra editar manualmente — Enter salva, Esc cancela.
+- **Toasts** discretos no canto inferior direito pra cada ação.
+- **Exportar CSV** (abre no Excel direto), **Backup JSON**, **Importar JSON**.
+- **Responsivo:** layout reorganiza no mobile, esconde colunas pouco essenciais (moeda e € convertido), busca colapsa.
 
-## Subir no GitHub Pages (deploy gratuito)
+## Deploy no GitHub Pages
 
-1. Crie um repositório novo no GitHub (ex: `emprestimo-elias`).
-2. No terminal, dentro desta pasta:
-
+1. Crie um repositório no GitHub.
+2. Na pasta:
    ```bash
-   git init
-   git add index.html README.md
-   git commit -m "Primeira versão"
-   git branch -M main
-   git remote add origin https://github.com/SEU_USUARIO/emprestimo-elias.git
+   git remote add origin https://github.com/SEU_USUARIO/NOME_REPO.git
    git push -u origin main
    ```
-
-3. No GitHub: **Settings → Pages → Source: Deploy from a branch → Branch: main / (root) → Save**.
-4. Em ~1 minuto o site fica online em `https://SEU_USUARIO.github.io/emprestimo-elias/`.
+3. **Settings → Pages → Source: Deploy from a branch → Branch: main / (root) → Save**.
+4. Em ~1 minuto fica online em `https://SEU_USUARIO.github.io/NOME_REPO/`.
 
 ## Sobre o `localStorage`
 
-Os dados ficam salvos **no navegador do dispositivo onde você acessar**, não no GitHub. Isso significa:
-
-- Funciona offline.
-- Não tem custo nem servidor.
-- **Não sincroniza** entre celular e PC — cada navegador tem sua "cópia". Use **Exportar JSON** para fazer backup ou mover dados de um dispositivo para outro.
-- Se você limpar o histórico/cache do navegador, os dados somem. Faça backup se for fazer isso.
+- Funciona offline. Funciona em qualquer host estático (GitHub Pages, Vercel, Netlify, servidor próprio).
+- Os dados ficam **no navegador do dispositivo** que acessa, não na nuvem. Se você abrir no celular e no PC, são duas "cópias" separadas.
+- Use **Backup JSON** pra mover dados entre dispositivos ou pra fazer um snapshot manual antes de operações arriscadas.
+- Se você limpar histórico/cache do navegador os dados somem.
 
 ## Estrutura
 
-- `index.html` — HTML, CSS e JS num único arquivo. Toda a lógica está no `<script>` no fim.
+- `index.html` — HTML, CSS e JS num único arquivo.
 - `README.md` — este arquivo.
 
-## Próximos passos possíveis (se um dia precisar)
+## Design
 
-- **Sincronizar entre dispositivos:** trocar `localStorage` por Supabase ou Firebase (cerca de 30 linhas de mudança).
-- **Categorias customizadas:** adicionar coluna "Categoria" independente da moeda.
-- **Gráficos:** evolução por dia/semana usando Chart.js.
-- **PWA:** transformar em app instalável no celular.
+Tema **warm** (paleta neutra quente com accent índigo `#4f46e5`), fonte **Archivo** (Google Fonts), tabelas em CSS grid (não `<table>`), tabular-nums em todos os números monetários e datas. Tokens de cor/raio/sombra ficam declarados como custom properties no topo do `<style>`.
