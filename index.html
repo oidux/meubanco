@@ -1287,13 +1287,16 @@
     }
 
     const MONTH_NAMES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    const isValidInvoice = (m) => typeof m === 'string' && /^\d{4}-\d{2}$/.test(m);
     function invoiceLabel(invoiceMonth) {
+      if (!isValidInvoice(invoiceMonth)) return '—';
       const [y, m] = invoiceMonth.split('-');
-      return `${MONTH_NAMES[parseInt(m, 10) - 1]}/${y.slice(2)}`;
+      return `${MONTH_NAMES[parseInt(m, 10) - 1] || '?'}/${y.slice(2)}`;
     }
     function invoiceLabelLong(invoiceMonth) {
+      if (!isValidInvoice(invoiceMonth)) return '—';
       const [y, m] = invoiceMonth.split('-');
-      return `${MONTH_NAMES[parseInt(m, 10) - 1]}/${y}`;
+      return `${MONTH_NAMES[parseInt(m, 10) - 1] || '?'}/${y}`;
     }
 
     /** Ensure a transaction has all required fields (migrate old shape) */
@@ -1322,19 +1325,19 @@
 
     /** @returns {Transaction[]} */
     function loadTransactions() {
+      let arr = null;
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return seedTransactions();
-        const parsed = JSON.parse(raw);
-        let arr = null;
-        if (parsed && Array.isArray(parsed.transactions)) arr = parsed.transactions;
-        else if (Array.isArray(parsed)) arr = parsed;
-        if (!arr) return seedTransactions();
-        return arr.map(normalizeTx);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.transactions)) arr = parsed.transactions;
+          else if (Array.isArray(parsed)) arr = parsed;
+        }
       } catch (err) {
-        console.warn('Falha ao ler transações, usando seed.', err);
-        return seedTransactions();
+        console.warn('Falha ao ler transações.', err);
       }
+      // Always normalize (including the seed fallback) so every item has a valid invoiceMonth.
+      return (arr || seedTransactions()).map(normalizeTx);
     }
     function saveTransactions() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ transactions: state.transactions }));
@@ -1579,13 +1582,17 @@
     // Render
     // ============================================================
     function renderAll() {
-      renderInvoiceNav();
-      renderHero();
-      renderTable();
-      renderRateControl();
-      renderClosingDay();
-      renderRateSync();
-      renderTopbarStatus();
+      // Isolate each render so a bug in one doesn't break the rest of the page.
+      const safe = (name, fn) => {
+        try { fn(); } catch (err) { console.error('[render]', name, err); }
+      };
+      safe('invoice-nav', renderInvoiceNav);
+      safe('hero', renderHero);
+      safe('table', renderTable);
+      safe('rate-control', renderRateControl);
+      safe('closing-day', renderClosingDay);
+      safe('rate-sync', renderRateSync);
+      safe('topbar-status', renderTopbarStatus);
     }
 
     function renderInvoiceNav() {
@@ -1758,7 +1765,9 @@
 
     /** All invoice months that exist in data + current invoice (today). */
     function getAvailableInvoices() {
-      const set = new Set(state.transactions.map(t => t.invoiceMonth));
+      const set = new Set(
+        state.transactions.map(t => t.invoiceMonth).filter(isValidInvoice)
+      );
       set.add(computeInvoiceMonth(todayISO()));
       return [...set].sort();
     }
@@ -1769,7 +1778,9 @@
       const today = computeInvoiceMonth(todayISO());
       const todayHasData = state.transactions.some(t => t.invoiceMonth === today);
       if (todayHasData) return today;
-      const sorted = [...new Set(state.transactions.map(t => t.invoiceMonth))].sort();
+      const sorted = [...new Set(
+        state.transactions.map(t => t.invoiceMonth).filter(isValidInvoice)
+      )].sort();
       return sorted.length ? sorted[sorted.length - 1] : today;
     }
 
