@@ -129,6 +129,71 @@
       opacity: 0.6;
     }
 
+    /* Invoice navigator (top of hero, spans full width) */
+    .invoice-nav {
+      grid-column: 1 / -1;
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: -4px -8px 4px;
+    }
+    .invoice-chevron {
+      flex: none;
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink-2);
+      display: grid; place-items: center;
+      transition: all 0.12s;
+    }
+    .invoice-chevron:hover { background: var(--surface-2); border-color: var(--ink-4); color: var(--ink); }
+    .invoice-chevron:disabled { opacity: 0.35; cursor: not-allowed; }
+    .invoice-strip {
+      flex: 1;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      scroll-behavior: smooth;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      padding: 4px 4px 6px;
+      mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+      -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+    }
+    .invoice-strip::-webkit-scrollbar { display: none; }
+    .invoice-pill {
+      flex: 0 0 auto;
+      padding: 7px 14px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ink-3);
+      cursor: pointer;
+      scroll-snap-align: center;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      transition: all 0.12s;
+    }
+    .invoice-pill:hover { border-color: var(--ink-4); color: var(--ink-2); }
+    .invoice-pill.is-active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+    }
+    @media (max-width: 880px) {
+      .invoice-nav { margin: -2px -4px 6px; }
+      .invoice-chevron { width: 32px; height: 32px; }
+      .invoice-pill { padding: 8px 16px; font-size: 13px; }
+    }
+
     .hero-primary { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px; }
     .hero-label {
       display: inline-flex; align-items: center; gap: 8px;
@@ -842,6 +907,7 @@
       .td-act,
       .hero-spark,
       .hero-cta,
+      .invoice-nav,
       .modal-backdrop,
       .empty,
       #file-import { display: none !important; }
@@ -940,7 +1006,7 @@
 <body>
   <div class="app">
     <div class="print-only print-cover" aria-hidden="true">
-      <div>Relatório · <strong id="report-title">Empréstimo</strong></div>
+      <div>Relatório · <strong id="report-title">Empréstimo</strong> · Fatura <strong id="report-invoice">—</strong></div>
       <div>Gerado em <strong id="report-generated">—</strong></div>
     </div>
 
@@ -962,6 +1028,15 @@
 
     <main class="stack">
       <section class="hero" aria-label="Resumo">
+        <div class="invoice-nav" id="invoice-nav" aria-label="Navegar entre faturas">
+          <button class="invoice-chevron" type="button" data-step="-1" aria-label="Fatura anterior">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div class="invoice-strip" id="invoice-strip" role="tablist"></div>
+          <button class="invoice-chevron" type="button" data-step="1" aria-label="Próxima fatura">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
         <div class="hero-primary">
           <div class="hero-label">
             <span class="dot"></span>
@@ -1051,6 +1126,9 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
               Ver no Google
             </a>
+            <span class="toolbar-sep" aria-hidden="true"></span>
+            <span class="rate-label">Fatura fecha</span>
+            <div id="closing-day-control"></div>
           </div>
           <div class="toolbar-actions">
             <button class="btn btn-ghost" id="btn-export-csv" type="button">
@@ -1128,6 +1206,11 @@
           <span>Observação</span>
           <input type="text" id="em-note" placeholder="Ex: Cartão, mercado…" />
         </label>
+
+        <label class="field">
+          <span>Fatura</span>
+          <input type="month" id="em-invoice" />
+        </label>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-danger-ghost" data-edit-action="delete">
@@ -1172,14 +1255,53 @@
     /** Sign multiplier for a transaction's contribution to the balance */
     const sign = (t) => t.type === 'pagamento' ? -1 : 1;
 
+    // ---------- Invoice (fatura) helpers ----------
+    const CLOSING_DAY_KEY = 'emprestimo-elias.closingDay.v1';
+
+    function getClosingDay() {
+      const raw = parseInt(localStorage.getItem(CLOSING_DAY_KEY), 10);
+      return (raw >= 1 && raw <= 31) ? raw : 25;
+    }
+    function setClosingDay(day) {
+      const n = parseInt(day, 10);
+      if (n >= 1 && n <= 31) localStorage.setItem(CLOSING_DAY_KEY, String(n));
+    }
+
+    /** Compute which invoice (YYYY-MM) a transaction belongs to.
+     *  Day <= closingDay → current month, else → next month. */
+    function computeInvoiceMonth(dateISO, closingDay = getClosingDay()) {
+      const [y, m, d] = dateISO.split('-').map(Number);
+      if (d <= closingDay) {
+        return `${y}-${String(m).padStart(2, '0')}`;
+      }
+      const nextM = m === 12 ? 1 : m + 1;
+      const nextY = m === 12 ? y + 1 : y;
+      return `${nextY}-${String(nextM).padStart(2, '0')}`;
+    }
+
+    const MONTH_NAMES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    function invoiceLabel(invoiceMonth) {
+      const [y, m] = invoiceMonth.split('-');
+      return `${MONTH_NAMES[parseInt(m, 10) - 1]}/${y.slice(2)}`;
+    }
+    function invoiceLabelLong(invoiceMonth) {
+      const [y, m] = invoiceMonth.split('-');
+      return `${MONTH_NAMES[parseInt(m, 10) - 1]}/${y}`;
+    }
+
     /** Ensure a transaction has all required fields (migrate old shape) */
     function normalizeTx(t) {
+      const date = t.date;
+      const invoiceMonth = (typeof t.invoiceMonth === 'string' && /^\d{4}-\d{2}$/.test(t.invoiceMonth))
+        ? t.invoiceMonth
+        : computeInvoiceMonth(date);
       return {
         id: t.id || uid(),
-        date: t.date,
+        date,
         value: Math.abs(Number(t.value)) || 0,
         currency: t.currency === 'EUR' ? 'EUR' : 'BRL',
         type: t.type === 'pagamento' ? 'pagamento' : 'gasto',
+        invoiceMonth,
         note: String(t.note || ''),
       };
     }
@@ -1254,6 +1376,7 @@
         value: Number(r.value),
         currency: r.currency,
         type: r.type,
+        invoiceMonth: r.invoice_month,
         note: r.note,
       });
     }
@@ -1266,6 +1389,7 @@
         value: t.value,
         currency: t.currency,
         type: t.type,
+        invoice_month: t.invoiceMonth,
         note: t.note || '',
       };
     }
@@ -1424,6 +1548,8 @@
         rateDraft: '',
         formCurrency: 'BRL',
         formType: 'gasto',
+        selectedInvoice: null, // YYYY-MM, set after bootstrap
+        editingClosingDay: false,
       },
     };
 
@@ -1446,15 +1572,64 @@
     // Render
     // ============================================================
     function renderAll() {
+      renderInvoiceNav();
       renderHero();
       renderTable();
       renderRateControl();
+      renderClosingDay();
       renderRateSync();
       renderTopbarStatus();
     }
 
+    function renderInvoiceNav() {
+      const strip = document.getElementById('invoice-strip');
+      const list = getAvailableInvoices();
+      // Ensure selectedInvoice is valid
+      if (!state.ui.selectedInvoice || !list.includes(state.ui.selectedInvoice)) {
+        state.ui.selectedInvoice = defaultInvoice();
+      }
+      const current = state.ui.selectedInvoice;
+      strip.innerHTML = list.map(m => `
+        <button type="button" role="tab"
+                class="invoice-pill${m === current ? ' is-active' : ''}"
+                data-invoice="${m}"
+                aria-selected="${m === current}">
+          ${invoiceLabel(m)}
+        </button>
+      `).join('');
+
+      // Update chevron disabled state
+      const idx = list.indexOf(current);
+      const nav = document.getElementById('invoice-nav');
+      nav.querySelector('[data-step="-1"]').disabled = idx <= 0;
+      nav.querySelector('[data-step="1"]').disabled = idx >= list.length - 1;
+
+      // Scroll the active pill into view (centered)
+      const active = strip.querySelector('.invoice-pill.is-active');
+      if (active) {
+        // requestAnimationFrame so layout is settled
+        requestAnimationFrame(() => {
+          const stripRect = strip.getBoundingClientRect();
+          const pillRect = active.getBoundingClientRect();
+          const target = active.offsetLeft - (strip.clientWidth - active.offsetWidth) / 2;
+          strip.scrollTo({ left: target, behavior: 'smooth' });
+        });
+      }
+    }
+
+    function selectInvoice(invoiceMonth) {
+      state.ui.selectedInvoice = invoiceMonth;
+      renderAll();
+    }
+    function stepInvoice(delta) {
+      const list = getAvailableInvoices();
+      const idx = list.indexOf(state.ui.selectedInvoice);
+      const nextIdx = Math.max(0, Math.min(list.length - 1, idx + delta));
+      if (nextIdx !== idx) selectInvoice(list[nextIdx]);
+    }
+
     function renderHero() {
-      const stats = computeStats(state.transactions, state.rate.value);
+      const stats = computeStats(transactionsInSelectedInvoice(), state.rate.value);
 
       // Clamp helper: when a balance goes negative (overpayment), the main
       // value is shown as 0 and the negative is exposed as a small grey
@@ -1518,7 +1693,7 @@
 
     function renderSparkline() {
       const host = document.getElementById('hero-spark');
-      const items = state.transactions;
+      const items = transactionsInSelectedInvoice();
       if (items.length === 0) { host.innerHTML = ''; return; }
       // Daily signed deltas in EUR (gasto = +, pagamento = −)
       const map = {};
@@ -1558,10 +1733,37 @@
 
     function filteredTransactions() {
       const q = state.ui.query.trim().toLowerCase();
+      const inv = state.ui.selectedInvoice;
       return state.transactions
+        .filter(it => !inv || it.invoiceMonth === inv)
         .filter(it => state.ui.filter === 'ALL' || it.currency === state.ui.filter)
         .filter(it => !q || (it.note && it.note.toLowerCase().includes(q)))
         .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    }
+
+    /** Transactions that belong to the selected invoice (no other filters). */
+    function transactionsInSelectedInvoice() {
+      const inv = state.ui.selectedInvoice;
+      return inv
+        ? state.transactions.filter(t => t.invoiceMonth === inv)
+        : state.transactions;
+    }
+
+    /** All invoice months that exist in data + current invoice (today). */
+    function getAvailableInvoices() {
+      const set = new Set(state.transactions.map(t => t.invoiceMonth));
+      set.add(computeInvoiceMonth(todayISO()));
+      return [...set].sort();
+    }
+
+    /** Default invoice to show on first load: today's if it has data,
+     *  otherwise the most recent invoice with data. */
+    function defaultInvoice() {
+      const today = computeInvoiceMonth(todayISO());
+      const todayHasData = state.transactions.some(t => t.invoiceMonth === today);
+      if (todayHasData) return today;
+      const sorted = [...new Set(state.transactions.map(t => t.invoiceMonth))].sort();
+      return sorted.length ? sorted[sorted.length - 1] : today;
     }
 
     function renderRow(item) {
@@ -1617,6 +1819,40 @@
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
           </button>`;
       }
+    }
+
+    function renderClosingDay() {
+      const host = document.getElementById('closing-day-control');
+      if (!host) return;
+      if (state.ui.editingClosingDay) {
+        host.innerHTML = `
+          <div class="rate-edit">
+            <input type="number" min="1" max="31" id="closing-day-input"
+                   value="${getClosingDay()}" autofocus />
+            <button class="btn btn-ghost btn-xs" type="button" id="closing-day-ok">OK</button>
+          </div>`;
+        const inp = document.getElementById('closing-day-input');
+        inp.focus(); inp.select();
+      } else {
+        host.innerHTML = `
+          <button type="button" class="rate-pill" id="closing-day-pill"
+                  title="Clique para alterar o dia de fechamento da fatura">
+            dia ${getClosingDay()}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+          </button>`;
+      }
+    }
+
+    function commitClosingDayEdit() {
+      const input = document.getElementById('closing-day-input');
+      if (!input) return;
+      const v = parseInt(input.value, 10);
+      if (!(v >= 1 && v <= 31)) { toast('Dia inválido (1-31)', 'err'); return; }
+      setClosingDay(v);
+      state.ui.editingClosingDay = false;
+      renderInvoiceNav(); // available list might shift if today's invoice month changed
+      renderClosingDay();
+      toast(`Fatura fecha dia ${v}`, 'ok');
     }
 
     function renderRateSync() {
@@ -1801,6 +2037,17 @@
     // "Adicionar transação" button in hero opens the modal in add mode
     document.getElementById('btn-open-add').addEventListener('click', openAddModal);
 
+    // Invoice navigator: chevrons + pill clicks
+    document.getElementById('invoice-nav').addEventListener('click', (ev) => {
+      const chev = ev.target.closest('button[data-step]');
+      if (chev && !chev.disabled) {
+        stepInvoice(parseInt(chev.dataset.step, 10));
+        return;
+      }
+      const pill = ev.target.closest('.invoice-pill[data-invoice]');
+      if (pill) selectInvoice(pill.dataset.invoice);
+    });
+
     // Search
     document.getElementById('search-input').addEventListener('input', (ev) => {
       state.ui.query = ev.target.value;
@@ -1859,7 +2106,11 @@
       currency: document.getElementById('em-currency'),
       type: document.getElementById('em-type'),
       prefix: document.getElementById('em-amount-prefix'),
+      invoice: document.getElementById('em-invoice'),
     };
+    /** Tracks if the user has manually changed the invoice in the open modal.
+     *  If false, changing the date auto-recomputes the invoice via closing day. */
+    let modalInvoiceTouched = false;
 
     const EM_TITLE = document.getElementById('edit-modal-title');
     const EM_DELETE_BTN = EM.el.querySelector('[data-edit-action="delete"]');
@@ -1882,11 +2133,16 @@
     function openAddModal() {
       state.ui.editingId = null;
       state.ui.confirmId = null;
-      EM.date.value = todayISO();
+      const date = todayISO();
+      EM.date.value = date;
       EM.value.value = '';
       EM.note.value = '';
       setModalCurrency('BRL');
       setModalType('gasto');
+      // Default invoice = currently selected one if user is browsing a fatura,
+      // otherwise computed from today + closing day rule.
+      EM.invoice.value = state.ui.selectedInvoice || computeInvoiceMonth(date);
+      modalInvoiceTouched = false;
       EM_TITLE.textContent = 'Adicionar transação';
       EM_DELETE_BTN.hidden = true;
       EM.el.hidden = false;
@@ -1902,6 +2158,8 @@
       EM.note.value = item.note || '';
       setModalCurrency(item.currency);
       setModalType(item.type);
+      EM.invoice.value = item.invoiceMonth || computeInvoiceMonth(item.date);
+      modalInvoiceTouched = true; // for edits we don't auto-recompute
       EM_TITLE.textContent = 'Editar transação';
       EM_DELETE_BTN.hidden = false;
       EM.el.hidden = false;
@@ -1949,6 +2207,9 @@
       const currency = getModalCurrency();
       const type = getModalType();
       const note = EM.note.value.trim();
+      const invoiceMonth = (EM.invoice.value && /^\d{4}-\d{2}$/.test(EM.invoice.value))
+        ? EM.invoice.value
+        : computeInvoiceMonth(date);
       if (!date || !isFinite(value) || value <= 0 || (currency !== 'BRL' && currency !== 'EUR')) {
         toast('Preencha data e valor', 'err');
         return;
@@ -1956,16 +2217,18 @@
       const id = state.ui.editingId; // null = add mode, id = edit mode
       // Close modal BEFORE the optimistic re-render
       closeEditModal();
+      // Follow the saved transaction to its invoice (so it stays visible)
+      state.ui.selectedInvoice = invoiceMonth;
       if (id) {
-        updateTransaction(id, { date, value, currency, type, note });
-        toast('Alteração salva', 'ok');
+        updateTransaction(id, { date, value, currency, type, invoiceMonth, note });
+        toast(`Alteração salva · ${invoiceLabel(invoiceMonth)}`, 'ok');
       } else {
         const defaultNote = type === 'pagamento'
           ? 'Pagamento'
           : (currency === 'BRL' ? 'Cartão' : 'Outros');
-        addTransaction({ date, value, currency, type, note: note || defaultNote });
-        const label = type === 'pagamento' ? 'Pagamento registrado' : 'Gasto adicionado';
-        toast(`${label}: ${fmtMoney(value, currency)}`, 'ok');
+        addTransaction({ date, value, currency, type, invoiceMonth, note: note || defaultNote });
+        const label = type === 'pagamento' ? 'Pagamento' : 'Gasto';
+        toast(`${label} em ${invoiceLabel(invoiceMonth)}: ${fmtMoney(value, currency)}`, 'ok');
       }
     }
 
@@ -1989,6 +2252,14 @@
       const btn = ev.target.closest('button[data-type]');
       if (btn) setModalType(btn.dataset.type);
     });
+    EM.invoice.addEventListener('input', () => { modalInvoiceTouched = true; });
+    EM.date.addEventListener('change', () => {
+      // Auto-recompute the invoice when the date changes, only if the user
+      // hasn't manually overridden it yet.
+      if (!modalInvoiceTouched && EM.date.value) {
+        EM.invoice.value = computeInvoiceMonth(EM.date.value);
+      }
+    });
     EM.el.addEventListener('click', (ev) => {
       // Click on backdrop closes; click inside modal does not
       if (ev.target === EM.el) closeEditModal();
@@ -2003,6 +2274,25 @@
       if (ev.key === 'Escape') { ev.preventDefault(); closeEditModal(); }
       else if (ev.key === 'Enter' && ev.target.tagName === 'INPUT') {
         ev.preventDefault(); commitModal();
+      }
+    });
+
+    // Closing day pill: click to edit, Enter/OK saves, Esc cancels
+    document.getElementById('closing-day-control').addEventListener('click', (ev) => {
+      if (ev.target.closest('#closing-day-pill')) {
+        state.ui.editingClosingDay = true;
+        renderClosingDay();
+        return;
+      }
+      if (ev.target.closest('#closing-day-ok')) commitClosingDayEdit();
+    });
+    document.getElementById('closing-day-control').addEventListener('keydown', (ev) => {
+      if (!state.ui.editingClosingDay) return;
+      if (ev.key === 'Enter') { ev.preventDefault(); commitClosingDayEdit(); }
+      else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        state.ui.editingClosingDay = false;
+        renderClosingDay();
       }
     });
 
@@ -2060,6 +2350,8 @@
         hour: '2-digit', minute: '2-digit',
       });
       document.getElementById('report-generated').textContent = fmt.format(new Date());
+      const inv = state.ui.selectedInvoice;
+      document.getElementById('report-invoice').textContent = inv ? invoiceLabelLong(inv) : '—';
     }
 
     // Keep the printed report meta fresh if the user uses the OS print shortcut (Ctrl/Cmd+P)
