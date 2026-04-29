@@ -6,7 +6,12 @@
   <title>Empréstimo · controle de gastos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://xzqsbwwotvymdpgzmnaa.supabase.co" crossorigin />
+  <link rel="preconnect" href="https://economia.awesomeapi.com.br" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Supabase JS — single UMD bundle (110KB), one HTTP request, well-cached -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js" defer></script>
   <style>
     /* ============ Tokens (warm theme) ============ */
     :root {
@@ -1231,11 +1236,13 @@
 
     // ============================================================
     // Supabase client (sync entre dispositivos via banco na nuvem)
+    // The UMD bundle is loaded via the script tag in <head> with `defer`,
+    // exposing window.supabase. Module scripts are also deferred by default,
+    // so by the time this runs the UMD has already been parsed.
     // ============================================================
-    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
     const SUPABASE_URL = 'https://xzqsbwwotvymdpgzmnaa.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_aO5uFk4tZiL8wu4nzSDDbQ_IiiGrQwL';
-    const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       realtime: { params: { eventsPerSecond: 5 } },
     });
 
